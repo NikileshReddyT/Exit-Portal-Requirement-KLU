@@ -7,7 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,11 +23,9 @@ public class StudentGradeController {
     public ResponseEntity<List<String>> uploadFile(@RequestParam("file") MultipartFile file) {
         try {
             List<String> messages = studentGradeService.uploadCSV(file);
-            return ResponseEntity.ok().body(messages);
-        } catch (IOException e) {
-            System.out.println(e);
-            List<String> errorMessages = List.of("Error processing file: " + e.getMessage());
-            return ResponseEntity.badRequest().body(errorMessages);
+            return ResponseEntity.ok(messages);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(List.of("Error processing file: " + e.getMessage()));
         }
     }
 

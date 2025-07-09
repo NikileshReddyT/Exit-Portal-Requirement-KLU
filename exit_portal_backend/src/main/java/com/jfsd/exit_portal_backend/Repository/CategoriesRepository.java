@@ -12,6 +12,6 @@ import org.springframework.stereotype.Repository;
 public interface CategoriesRepository extends JpaRepository<Categories, Integer> {
 
     @Query("SELECT c FROM Categories c WHERE LOWER(TRIM(c.categoryName)) = LOWER(TRIM(:name))")
-    Categories findByCategoryNameIgnoreCase(@Param("name") String name);
+    java.util.Optional<Categories> findByCategoryNameIgnoreCase(@Param("name") String name);
 
 }

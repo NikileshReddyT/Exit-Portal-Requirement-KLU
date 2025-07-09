@@ -29,6 +29,16 @@ public class CoursesController {
         return course != null ? ResponseEntity.ok(course) : ResponseEntity.notFound().build();
     }
 
+    @PostMapping("/upload")
+    public ResponseEntity<List<String>> uploadFile(@RequestParam("file") MultipartFile file) {
+        try {
+            List<String> messages = coursesService.populateCoursesFromCSV(file);
+            return ResponseEntity.ok(messages);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(List.of("Error processing file: " + e.getMessage()));
+        }
+    }
+
 
 
 
@@ -56,13 +66,5 @@ public class CoursesController {
         return ResponseEntity.ok(coursesService.saveCourse(course));
     }
 
-    @PostMapping("/populate")
-    public ResponseEntity<List<String>> populateCoursesFromCSV(@RequestParam("file") MultipartFile file) {
-        try {
-            List<String> messages = coursesService.populateCoursesFromCSV(file);
-            return ResponseEntity.ok(messages);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(List.of("Error processing file: " + e.getMessage()));
-        }
-    }
+
 }

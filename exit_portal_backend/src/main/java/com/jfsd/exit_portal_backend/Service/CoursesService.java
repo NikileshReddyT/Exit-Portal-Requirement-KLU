@@ -3,6 +3,7 @@ package com.jfsd.exit_portal_backend.Service;
 import com.jfsd.exit_portal_backend.Model.Courses;
 import com.jfsd.exit_portal_backend.Repository.CoursesRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -12,6 +13,10 @@ import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.Optional;
 
 @Service
@@ -33,56 +38,82 @@ public class CoursesService {
     }
 
     @Transactional
-    public List<String> populateCoursesFromCSV(MultipartFile file) throws IOException {
-        List<String> messages = new ArrayList<>();
-        List<Courses> coursesToSave = new ArrayList<>();
+    public List<String> populateCoursesFromCSV(MultipartFile file) {
+        ConcurrentLinkedQueue<String> messages = new ConcurrentLinkedQueue<>();
+        AtomicInteger updatedRecords = new AtomicInteger(0);
+        AtomicInteger createdRecords = new AtomicInteger(0);
+        AtomicInteger rowNumberCounter = new AtomicInteger(1);
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-            String line = br.readLine(); // Skip the header
+            List<String> lines = br.lines().collect(Collectors.toList());
 
-            while ((line = br.readLine()) != null) {
-                String[] values = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-                if (values.length >= 4) {
+            List<Courses> coursesToSave = lines.parallelStream()
+                .skip(1) // Skip header row
+                .map(line -> {
+                    int rowNumber = rowNumberCounter.incrementAndGet();
+                    String[] values = parseCsvLine(line);
+
+                    if (values.length < 4) {
+                        messages.add("Skipping row " + rowNumber + ": Not enough columns.");
+                        return null;
+                    }
+
                     String courseCode = values[0].trim();
-                    String courseTitle = values[1].trim().replace("\"", "");
-                    double credits;
+                    Optional<Courses> existingCourseOpt = coursesRepository.findFirstByCourseCode(courseCode);
+
+                    Courses course;
+                    if (existingCourseOpt.isPresent()) {
+                        course = existingCourseOpt.get();
+                        updatedRecords.incrementAndGet();
+                    } else {
+                        course = new Courses();
+                        course.setCourseCode(courseCode);
+                        createdRecords.incrementAndGet();
+                    }
+
+                    course.setCourseTitle(values[1].trim().replace("\"", ""));
                     try {
-                        credits = Double.parseDouble(values[2].trim());
+                        course.setCourseCredits(Double.parseDouble(values[2].trim()));
                     } catch (NumberFormatException e) {
-                        messages.add("Invalid credit value for course " + courseCode + ". Skipping.");
-                        credits = 0.0;
-                        continue;
+                        messages.add("Skipping row " + rowNumber + ": Invalid credit value for course " + courseCode + ".");
+                        return null;
                     }
-                    String categoryName = values[3].trim();
+                    course.setCategory(values[3].trim());
 
-                    Optional<Courses> existingCourse = coursesRepository.findFirstByCourseCode(courseCode);
-                    if (existingCourse.isPresent()) {
-                        messages.add("Course with code " + courseCode + " already exists. Skipping.");
-                        continue;
-                    }
-
-                    Courses course = new Courses();
-                    course.setCourseCode(courseCode);
-                    course.setCourseTitle(courseTitle);
-                    course.setCourseCredits(credits);
-                    course.setCategory(categoryName);
-
-                    coursesToSave.add(course);
-                }
-            }
+                    return course;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
 
             if (!coursesToSave.isEmpty()) {
                 coursesRepository.saveAll(coursesToSave);
-                messages.add("Successfully imported " + coursesToSave.size() + " courses.");
+                messages.add("Successfully created " + createdRecords.get() + " and updated " + updatedRecords.get() + " courses.");
             } else {
-                messages.add("No new courses to import.");
+                messages.add("No valid courses found to import.");
             }
 
-        } catch (Exception e) {
-            messages.add("Error processing CSV file: " + e.getMessage());
-            throw e;
+        } catch (IOException e) {
+            messages.add("Error reading CSV file: " + e.getMessage());
         }
 
-        return messages;
+        return new ArrayList<>(messages);
+    }
+
+    private String[] parseCsvLine(String line) {
+        List<String> values = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        for (char c : line.toCharArray()) {
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                values.add(sb.toString().trim());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        values.add(sb.toString().trim());
+        return values.toArray(new String[0]);
     }
 }

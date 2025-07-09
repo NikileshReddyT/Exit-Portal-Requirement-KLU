@@ -6,7 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,50 +28,50 @@ public class StudentCategoryProgressService {
     private CoursesRepository coursesRepository;
 
     @Transactional
-    public void calculateAndUpdateProgress() {
-        // Fetch all grades, students, categories, and courses in one call
-        List<StudentGrade> allGrades = studentGradeRepository.findAll();
+    public void calculateAndUpdateProgressForStudents(Set<String> universityIds) {
+        if (universityIds == null || universityIds.isEmpty()) {
+            return;
+        }
+
+        // Fetch all necessary data in bulk to avoid multiple database calls
+        List<StudentGrade> relevantGrades = studentGradeRepository.findByUniversityIdIn(universityIds);
         List<Categories> allCategories = categoriesRepository.findAll();
         Map<String, List<Courses>> coursesByCategory = coursesRepository.findAll().stream()
-                .collect(Collectors.groupingBy(course -> course.getCategory()));
-    
-        // Group grades by student (universityId)
-        Map<String, List<StudentGrade>> gradesByStudent = allGrades.stream()
-                .filter(grade -> grade.getUniversityId() != null) // Ensure no null universityId
+                .collect(Collectors.groupingBy(Courses::getCategory));
+
+        Map<String, List<StudentGrade>> gradesByStudent = relevantGrades.stream()
                 .collect(Collectors.groupingBy(StudentGrade::getUniversityId));
-    
+
         // Process each student
-        for (Map.Entry<String, List<StudentGrade>> entry : gradesByStudent.entrySet()) {
-            String universityId = entry.getKey();
-            List<StudentGrade> studentGrades = entry.getValue();
-    
-            if (studentGrades.isEmpty()) continue;
-    
-            // Delete existing progress records for this student
+        for (String universityId : universityIds) {
+            List<StudentGrade> studentGrades = gradesByStudent.getOrDefault(universityId, Collections.emptyList());
+
+            // Delete existing progress records for the student to ensure a clean slate
             progressRepository.deleteByUniversityId(universityId);
-    
+
+            if (studentGrades.isEmpty()) {
+                continue; // No grades for this student, so no progress to calculate
+            }
+
             String studentName = studentGrades.get(0).getStudentName();
-    
-            // Process each category
+
+            // Process each category for the student
             for (Categories category : allCategories) {
                 List<Courses> categoryCourses = coursesByCategory.getOrDefault(category.getCategoryName(), Collections.emptyList());
                 Set<String> categoryCourseCodes = categoryCourses.stream()
                         .map(Courses::getCourseCode)
                         .collect(Collectors.toSet());
-    
-                // Filter student's completed courses within the category
+
                 List<StudentGrade> completedCourses = studentGrades.stream()
                         .filter(grade -> categoryCourseCodes.contains(grade.getCourseCode()))
-                        .filter(grade -> "P".equals(grade.getPromotion())) // Only include if promotion is "P"
+                        .filter(grade -> "P".equals(grade.getPromotion()))
                         .collect(Collectors.toList());
-    
-                // Calculate completed course count and credits sum
+
                 int completedCourseCount = completedCourses.size();
                 double completedCreditsSum = completedCourses.stream()
                         .mapToDouble(StudentGrade::getCredits)
                         .sum();
-    
-                // Create and save progress record
+
                 StudentCategoryProgress progress = new StudentCategoryProgress(
                     universityId,
                     studentName,
@@ -78,10 +81,17 @@ public class StudentCategoryProgressService {
                     completedCourseCount,
                     completedCreditsSum
                 );
-    
+
                 progressRepository.save(progress);
             }
         }
+    }
+
+    @Transactional
+    public void calculateAndUpdateProgress() {
+        // Fetch all unique student IDs and delegate to the specific method
+        Set<String> allStudentIds = studentGradeRepository.findAllUniqueStudentIds().stream().collect(Collectors.toSet());
+        calculateAndUpdateProgressForStudents(allStudentIds);
     }
     
     

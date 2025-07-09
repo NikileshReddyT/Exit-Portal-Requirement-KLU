@@ -3,14 +3,21 @@ package com.jfsd.exit_portal_backend.Service;
 import com.jfsd.exit_portal_backend.Model.StudentGrade;
 import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.Optional;
 
 @Service
@@ -19,87 +26,99 @@ public class StudentGradeService {
     @Autowired
     private StudentGradeRepository studentGradeRepository;
 
+    @Autowired
+    private StudentCategoryProgressService studentCategoryProgressService;
+
     // Upload CSV file
         // Upload CSV file
-        public List<String> uploadCSV(MultipartFile file) throws IOException {
-            List<String> messages = new ArrayList<>();
-            List<StudentGrade> studentGradesToSave = new ArrayList<>();
-    
+        @Transactional
+        public List<String> uploadCSV(MultipartFile file) {
+            ConcurrentLinkedQueue<String> messages = new ConcurrentLinkedQueue<>();
+            AtomicInteger updatedRecords = new AtomicInteger(0);
+            AtomicInteger createdRecords = new AtomicInteger(0);
+            AtomicInteger rowNumberCounter = new AtomicInteger(1);
+
             try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-                String line;
-                boolean firstLine = true;
-    
-                while ((line = br.readLine()) != null) {
-                    if (firstLine) {
-                        firstLine = false; // Skip the header
-                        continue;
-                    }
-    
-                    String[] values = parseCsvLine(line);
-                    if (values.length < 5) continue; // Ensure required fields are present
-    
-                    String universityId = values[0].trim();
-                    String courseCode = values[3].trim();
-    
-                    // Check if this record already exists based on universityId and courseCode
-                    boolean exists = studentGradeRepository.existsByUniversityIdAndCourseCode(universityId, courseCode);
-                    if (exists) {
-                        messages.add("Grade record for University ID " + universityId + " and Course Code " + courseCode + " already exists. Skipping.");
-                        System.out.println("Grade record for University ID " + universityId + " and Course Code " + courseCode + " already exists. Skipping.");
-                        continue;
-                    }
-    
-                    StudentGrade grade = new StudentGrade();
-                    grade.setUniversityId(universityId);
-                    grade.setStudentName(values[1].trim());
-                    grade.setStatus(values[2].trim());
-                    grade.setCourseCode(courseCode);
-                    grade.setCourseName(values[4].trim());
-    
-                    // Parsing and setting additional fields as per original code...
-                    if (values.length > 5) {
-                        String gradeValue = values[5].trim();
-                        int indexOfParenthesis = gradeValue.indexOf('(');
-                        if (indexOfParenthesis != -1) {
-                            gradeValue = gradeValue.substring(0, indexOfParenthesis).trim();
+                List<String> lines = br.lines().collect(Collectors.toList());
+
+                List<StudentGrade> gradesToSave = lines.parallelStream()
+                    .skip(1) // Skip header row
+                    .map(line -> {
+                        int rowNumber = rowNumberCounter.incrementAndGet();
+                        String[] values = parseCsvLine(line);
+
+                        if (values.length < 5) {
+                            messages.add("Skipping row " + rowNumber + ": Not enough columns.");
+                            return null;
                         }
-                        grade.setGrade(gradeValue.replace("\"", ""));
-                    }
-    
-                    if (values.length > 6) {
+
+                        String universityId = values[0].trim();
+                        String courseCode = values[3].trim();
+
+                        Optional<StudentGrade> existingGradeOpt = studentGradeRepository.findByUniversityIdAndCourseCode(universityId, courseCode);
+
+                        StudentGrade grade;
+                        if (existingGradeOpt.isPresent()) {
+                            grade = existingGradeOpt.get();
+                            updatedRecords.incrementAndGet();
+                        } else {
+                            grade = new StudentGrade();
+                            grade.setUniversityId(universityId);
+                            grade.setCourseCode(courseCode);
+                            createdRecords.incrementAndGet();
+                        }
+
+                        grade.setStudentName(values[1].trim());
+                        grade.setStatus(values[2].trim());
+                        grade.setCourseName(values[4].trim());
+
+                        if (values.length > 5) {
+                            String gradeValue = values[5].trim().replace("\"", "");
+                            int indexOfParenthesis = gradeValue.indexOf('(');
+                            if (indexOfParenthesis != -1) {
+                                gradeValue = gradeValue.substring(0, indexOfParenthesis).trim();
+                            }
+                            grade.setGrade(gradeValue);
+                        }
+
                         try {
-                            grade.setGradePoint(Double.parseDouble(values[6].trim()));
+                            if (values.length > 6) grade.setGradePoint(Double.parseDouble(values[6].trim()));
+                            if (values.length > 7) grade.setCredits(Double.parseDouble(values[7].trim()));
                         } catch (NumberFormatException e) {
-                            grade.setGradePoint(0.0);
+                            messages.add("Skipping row " + rowNumber + ": Invalid number format for grade point or credits.");
+                            return null;
                         }
-                    }
-    
-                    if (values.length > 7) {
-                        try {
-                            grade.setCredits(Double.parseDouble(values[7].trim()));
-                        } catch (NumberFormatException e) {
-                            grade.setCredits(0.0);
-                        }
-                    }
-    
-                    if (values.length > 8) grade.setPromotion(values[8].trim());
-                    if (values.length > 9) grade.setYear(values[9].trim());
-                    if (values.length > 10) grade.setSemester(values[10].trim());
-                    if (values.length > 11) grade.setCategory(values[11].trim());
-    
-                    studentGradesToSave.add(grade);
+
+                        if (values.length > 8) grade.setPromotion(values[8].trim());
+                        if (values.length > 9) grade.setYear(values[9].trim());
+                        if (values.length > 10) grade.setSemester(values[10].trim());
+                        if (values.length > 11) grade.setCategory(values[11].trim());
+
+                        return grade;
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+                if (!gradesToSave.isEmpty()) {
+                    studentGradeRepository.saveAll(gradesToSave);
+                    messages.add("Successfully created " + createdRecords.get() + " and updated " + updatedRecords.get() + " grade records.");
+
+                    // Trigger progress recalculation for affected students
+                    Set<String> affectedStudentIds = gradesToSave.stream()
+                                                         .map(StudentGrade::getUniversityId)
+                                                         .collect(Collectors.toSet());
+                    studentCategoryProgressService.calculateAndUpdateProgressForStudents(affectedStudentIds);
+                    messages.add("Successfully triggered progress recalculation for " + affectedStudentIds.size() + " students.");
+
+                } else {
+                    messages.add("No valid grade records found to import.");
                 }
+
+            } catch (IOException e) {
+                messages.add("Error reading CSV file: " + e.getMessage());
             }
-    
-            // Save new grades and return messages
-            if (!studentGradesToSave.isEmpty()) {
-                studentGradeRepository.saveAll(studentGradesToSave);
-                messages.add("Successfully imported " + studentGradesToSave.size() + " new grade records.");
-            } else {
-                messages.add("No new grade records to import.");
-            }
-    
-            return messages;
+
+            return new ArrayList<>(messages);
         }  
     // Get all grades
     public List<StudentGrade> getAllGrades() {

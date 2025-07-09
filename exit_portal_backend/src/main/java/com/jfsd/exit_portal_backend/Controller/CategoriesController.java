@@ -8,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 
@@ -35,17 +34,16 @@ public class CategoriesController {
 
 
     @PostMapping("/populate")
-    public ResponseEntity<String> populateCategoriesFromCSV(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<List<String>> populateCategoriesFromCSV(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
-            return ResponseEntity.badRequest().body("Please select a CSV file to upload.");
+            return ResponseEntity.badRequest().body(List.of("Please select a CSV file to upload."));
         }
 
         try {
-            categoriesService.populateCategoriesFromCSV(file);
-            return ResponseEntity.ok("Categories populated successfully");
-        } catch (IOException e) {
-            e.printStackTrace();
-            return ResponseEntity.internalServerError().body("Failed to process the CSV file: " + e.getMessage());
+            List<String> messages = categoriesService.populateCategoriesFromCSV(file);
+            return ResponseEntity.ok(messages);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(List.of("Error processing file: " + e.getMessage()));
         }
     }
 }
