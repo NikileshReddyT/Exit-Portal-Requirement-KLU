@@ -11,6 +11,8 @@ public class CategoryCoursesDTO {
     private int registeredCourses;
     private double minRequiredCredits;
     private double registeredCredits;
+    private int completedCourses;
+    private double completedCredits;
     private List<StudentGrade> courses;
 
     // Constructors
@@ -55,6 +57,22 @@ public class CategoryCoursesDTO {
 
     public void setRegisteredCredits(double registeredCredits) {
         this.registeredCredits = registeredCredits;
+    }
+
+    public int getCompletedCourses() {
+        return completedCourses;
+    }
+
+    public void setCompletedCourses(int completedCourses) {
+        this.completedCourses = completedCourses;
+    }
+
+    public double getCompletedCredits() {
+        return completedCredits;
+    }
+
+    public void setCompletedCredits(double completedCredits) {
+        this.completedCredits = completedCredits;
     }
 
     public List<StudentGrade> getCourses() {

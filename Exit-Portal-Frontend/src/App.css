@@ -1,41 +1,4 @@
-/* Global Styles */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-#root {
-  width: 100vw;
-}
-.app {
-  width: 100%;
-}
-body {
-  font-family: 'Arial', sans-serif;
-  background: rgb(249, 249, 249);
-  width: 100%;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: rgb(9, 9, 9);
-}
-div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-/* Animation Keyframes */
-@keyframes fadeIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
+@import "tailwindcss";
 @keyframes slideDown {
   0% {
     transform: translate(-50%, -100%);

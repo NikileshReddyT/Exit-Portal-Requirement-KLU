@@ -1,8 +1,11 @@
 import React from "react";
-import Login from "./components/Login";
-import Dashboard from "./components/Dashboard";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Categories from './pages/Categories';
+import CategoryDetailsPage from './pages/CategoryDetailsPage';
 import "./App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 
 function App() {
@@ -10,8 +13,12 @@ function App() {
     <BrowserRouter>
       <Analytics />
       <Routes>
-        <Route path='/' element={<Login />} />
+        <Route path='/' element={<Home />} />
+        <Route path='/home' element={<Navigate to="/" />} />
+        <Route path='/login' element={<Login />} />
         <Route path='/dashboard' element={<Dashboard />} />
+        <Route path="/categories" element={<Categories />} />
+        <Route path="/category/:categoryName" element={<CategoryDetailsPage />} />
       </Routes>
     </BrowserRouter>
   );

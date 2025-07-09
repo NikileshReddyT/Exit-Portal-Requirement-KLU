@@ -70,60 +70,53 @@ public class FrontendService {
     }
 
     public StudentCourseReportDTO generateStudentReport(String universityId) {
-        // Retrieve all category progress for the student
-        List<StudentCategoryProgress> categoryProgress = studentCategoryProgressRepository.findByUniversityId(universityId);
-        
-        // Check if data exists
-        if (categoryProgress == null || categoryProgress.isEmpty()) {
-            System.out.println("No data found for universityId: " + universityId);
+        List<StudentCategoryProgress> categoryProgressList = studentCategoryProgressRepository.findByUniversityId(universityId);
+        if (categoryProgressList == null || categoryProgressList.isEmpty()) {
             return null;
         }
-        
-        // Initialize the main DTO
+
         StudentCourseReportDTO reportDTO = new StudentCourseReportDTO();
         reportDTO.setStudentId(universityId);
-        reportDTO.setStudentName(categoryProgress.get(0).getStudentName());
-    
-        // Initialize variables for totals
+        reportDTO.setStudentName(categoryProgressList.get(0).getStudentName());
+
         List<CategoryCoursesDTO> categoryDTOs = new ArrayList<>();
-        int totalCourses = 0;
-        double totalCredits = 0.0;
-    
-        for (StudentCategoryProgress progress : categoryProgress) {
+        int totalRegisteredCourses = 0;
+        double totalRegisteredCredits = 0.0;
+
+        for (StudentCategoryProgress progress : categoryProgressList) {
             CategoryCoursesDTO categoryDTO = new CategoryCoursesDTO();
             categoryDTO.setCategoryName(progress.getCategoryName());
             categoryDTO.setMinRequiredCourses(progress.getMinRequiredCourses());
-            categoryDTO.setRegisteredCourses(progress.getCompletedCourses());
             categoryDTO.setMinRequiredCredits(progress.getMinRequiredCredits());
-            categoryDTO.setRegisteredCredits(progress.getCompletedCredits());
-    
-            // Get only completed courses for this category
-            List<StudentGrade> completedCourses = getCoursesByCategory(universityId, progress.getCategoryName());
-            
-            if (completedCourses == null || completedCourses.isEmpty()) {
-                System.out.println("No completed courses found for category: " + progress.getCategoryName());
-            } else {
-                categoryDTO.setCourses(completedCourses); // Assuming CategoryCoursesDTO can accept StudentGrade list
-                System.out.println("Completed courses for category " + progress.getCategoryName() + ": " + completedCourses);
+
+            List<StudentGrade> studentGrades = getCoursesByCategory(universityId, progress.getCategoryName());
+            categoryDTO.setCourses(studentGrades);
+
+            int completedCoursesCount = 0;
+            double completedCreditsSum = 0.0;
+            for (StudentGrade grade : studentGrades) {
+                // Assuming 'F' grade means not passed. Adjust if other grades also mean failure.
+                if (grade.getGrade() != null && !grade.getGrade().equalsIgnoreCase("F")) {
+                    completedCoursesCount++;
+                    completedCreditsSum += grade.getCredits();
+                }
             }
-    
+
+            categoryDTO.setRegisteredCourses(studentGrades.size());
+            categoryDTO.setRegisteredCredits(studentGrades.stream().mapToDouble(StudentGrade::getCredits).sum());
+            categoryDTO.setCompletedCourses(completedCoursesCount);
+            categoryDTO.setCompletedCredits(completedCreditsSum);
+
             categoryDTOs.add(categoryDTO);
-    
-            // Add to totals
-            totalCourses += progress.getCompletedCourses();
-            totalCredits += progress.getCompletedCredits();
+
+            totalRegisteredCourses += studentGrades.size();
+            totalRegisteredCredits += studentGrades.stream().mapToDouble(StudentGrade::getCredits).sum();
         }
-    
-        // Populate the final report DTO
+
         reportDTO.setCategories(categoryDTOs);
-        reportDTO.setTotalRegisteredCourses(totalCourses);
-        reportDTO.setTotalRegisteredCredits(totalCredits);
-    
-        // Log the final DTO details
-        System.out.println("Generated report for student ID: " + universityId);
-        System.out.println("Total Registered Courses: " + totalCourses);
-        System.out.println("Total Registered Credits: " + totalCredits);
-    
+        reportDTO.setTotalRegisteredCourses(totalRegisteredCourses);
+        reportDTO.setTotalRegisteredCredits(totalRegisteredCredits);
+
         return reportDTO;
     }
 }

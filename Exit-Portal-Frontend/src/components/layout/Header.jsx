@@ -1,5 +1,5 @@
 import React from 'react';
-import KLlogo from '../images/Frame 1 NR.png'; // Correct path
+import KLlogo from '../../images/Frame 1 NR.png'; // Correct path
 
 const Header = () => {
   return (
