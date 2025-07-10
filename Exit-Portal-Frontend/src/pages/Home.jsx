@@ -6,7 +6,7 @@ import bg from '../images/bg.jpg';
 
 const FeatureCard = ({ icon, title, children, delay }) => (
     <motion.div
-        className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 transform hover:-translate-y-2 transition-transform duration-300 h-full"
+        className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 transform hover:-translate-y-2 transition-transform duration-300 h-full flex flex-col items-center justify-center "
         initial={{ opacity: 0, y: 40 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.5 }}
@@ -16,7 +16,7 @@ const FeatureCard = ({ icon, title, children, delay }) => (
             {React.cloneElement(icon, { className: "text-red-600", size: 32 })}
         </div>
         <h3 className="text-2xl font-bold text-brand-charcoal mb-3">{title}</h3>
-        <p className="text-gray-600 leading-relaxed">{children}</p>
+        <p className="text-gray-600 text-center leading-relaxed">{children}</p>
     </motion.div>
 );
 
@@ -56,7 +56,7 @@ const Home = () => {
     return (
         <div className="font-sans bg-gray-50 text-gray-800">
             <div 
-                className="fixed inset-0 z-0"
+                className="fixed inset-0 z-10 h-screen w-screen"
                 style={{
                     backgroundImage: `url(${bg})`,
                     backgroundSize: 'cover',
@@ -64,12 +64,12 @@ const Home = () => {
                     backgroundAttachment: 'fixed',
                 }}
             >
-                <div className="absolute inset-0 bg-black opacity-60"></div>
+                <div className="absolute inset-0 bg-black opacity-60 h-full"></div>
             </div>
 
             <div className="relative z-10 overflow-x-hidden">
                 {/* Hero Section */}
-                <header className="min-h-screen flex flex-col items-center justify-center text-center p-6 relative">
+                <header className="min-h-screen flex flex-col items-center justify-center text-center p-6 relative h-[80vh]">
                     {/* Main Content */}
                     <motion.div
                         className="flex flex-col items-center justify-center"

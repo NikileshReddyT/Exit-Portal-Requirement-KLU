@@ -87,7 +87,7 @@ const Login = () => {
                 <div className="absolute -bottom-24 -left-16 w-80 h-80 bg-brand-red-light rounded-full"></div>
                 
                 <div className="z-10">
-                    <h1 className="text-4xl font-bold text-white tracking-wider text-center">KL University</h1>
+                    <Link to="/"><h1 className="text-4xl font-bold text-white tracking-wider text-center hover:text-red-700 transition-all duration-300">KL University</h1></Link>
                 </div>
                 <div className="z-10 text-center">
                     <h2 className="text-5xl font-bold text-white leading-tight">Unlock Your<br/>Academic Journey.</h2>
@@ -100,95 +100,97 @@ const Login = () => {
             </motion.div>
 
             {/* Right Panel - Login Form */}
-            <div className="w-full xl:w-1/2 flex items-center justify-center p-8 sm:p-12">
+            <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8">
                 <motion.div 
                     variants={formVariants}
-                    className="w-full max-w-md h-full lg:h-auto flex flex-col justify-between items-center"
+                    className="w-full max-w-md h-full lg:h-auto"
                 >
-                    <div className="text-center lg:hidden mt-4 ">
-                        <h1 className="text-3xl font-bold text-brand-charcoal tracking-wider">Exit Requirement Portal</h1>
+                    <div className="text-center lg:hidden mb-10">
+                        <Link to="/"><h1 className="text-2xl sm:text-3xl font-black text-brand-charcoal tracking-wider">Exit Requirement Portal</h1></Link>
                         <p className="text-gray-500 mt-2">Unlock Your Academic Journey.</p>
                     </div>
-                <div className="my-auto">
-                    <motion.h2 variants={formVariants} className="text-4xl font-bold text-brand-charcoal mb-3">Sign In</motion.h2>
-                    <motion.p variants={formVariants} className="text-gray-500 mb-10">Welcome back! Please enter your credentials.</motion.p>
 
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <motion.div variants={formVariants}>
-                            <label className="block text-gray-600 text-sm font-semibold mb-2" htmlFor="university-id">
-                                University ID
-                            </label>
-                            <div className="relative">
-                                <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    id="university-id"
-                                    type="text"
-                                    value={id}
-                                    onChange={(e) => setId(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-red focus:border-transparent transition-all duration-300 outline-none"
-                                    placeholder="Enter your university ID"
-                                    required
-                                />
-                            </div>
-                        </motion.div>
+                    {/* Glassmorphism Card for Mobile, Seamless for Desktop */}
+                    <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/30 lg:bg-transparent lg:backdrop-blur-none lg:shadow-none lg:p-0 lg:border-none">
+                        <motion.h2 variants={formVariants} className="text-xl font-bold text-brand-charcoal text-center  lg:text-3xl mb-2">Sign In</motion.h2>
+                        <motion.p variants={formVariants} className="text-gray-600 text-center  lg:text-base mb-10">Enter your credentials to access your account.</motion.p>
 
-                        <motion.div variants={formVariants}>
-                            <label className="block text-gray-600 text-sm font-semibold mb-2" htmlFor="password">
-                                Password
-                            </label>
-                            <div className="relative">
-                                <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input
-                                    id="password"
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-red focus:border-transparent transition-all duration-300 outline-none"
-                                    placeholder="Enter your password"
-                                    required
-                                />
-                            </div>
-                            <div className="text-right mt-2">
-                                <Link to="/forgot-password" className="text-sm text-brand-red hover:underline font-medium">
-                                    Forgot Password?
-                                </Link>
-                            </div>
-                        </motion.div>
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <motion.div variants={formVariants}>
+                                <label className="block text-gray-700 text-sm lg:text-base font-bold mb-2" htmlFor="university-id">
+                                    University ID
+                                </label>
+                                <div className="relative">
+                                    <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        id="university-id"
+                                        type="text"
+                                        value={id}
+                                        onChange={(e) => setId(e.target.value)}
+                                        className="w-full pl-12 pr-4 py-3 bg-white/50 border-2 border-white/40 rounded-xl focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red transition-all duration-300 outline-none placeholder-gray-500 text-brand-charcoal shadow-inner"
+                                        placeholder="e.g., 2200039163"
+                                        required
+                                    />
+                                </div>
+                            </motion.div>
 
-                        <AnimatePresence>
-                            {error && (
-                                <motion.p 
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    className="text-red-600 text-sm text-center p-3 bg-red-50 rounded-lg border border-red-200"
-                                >
-                                    {error}
-                                </motion.p>
-                            )}
-                        </AnimatePresence>
+                            <motion.div variants={formVariants}>
+                                <label className="block text-gray-700 text-sm lg:text-base font-bold mb-2" htmlFor="password">
+                                    Password
+                                </label>
+                                <div className="relative">
+                                    <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        id="password"
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full pl-12 pr-4 py-3 bg-white/50 border-2 border-white/40 rounded-xl focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red transition-all duration-300 outline-none placeholder-gray-500 text-brand-charcoal shadow-inner"
+                                        placeholder="Enter your password"
+                                        required
+                                    />
+                                </div>
+                                <div className="text-right mt-2">
+                                    <Link to="/forgot-password" className="text-sm text-brand-red hover:underline font-semibold">
+                                        Forgot Password?
+                                    </Link>
+                                </div>
+                            </motion.div>
 
-                        <motion.div variants={formVariants}>
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full group flex items-center justify-center gap-2 bg-brand-red text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-300 transition-all duration-300 transform hover:-translate-y-1 disabled:bg-red-400 disabled:cursor-not-allowed disabled:transform-none shadow-lg hover:shadow-red-500/40"
-                            >
-                                {loading ? (
-                                    <>
-                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        <span>Signing In...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>Sign In</span>
-                                        <FiArrowRight className="transition-transform duration-300 group-hover:translate-x-1" />
-                                    </>
+                            <AnimatePresence>
+                                {error && (
+                                    <motion.p 
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        className="text-red-800 text-sm font-semibold text-center p-3 bg-red-100 rounded-lg border border-red-200 shadow-md"
+                                    >
+                                        {error}
+                                    </motion.p>
                                 )}
-                            </button>
-                        </motion.div>
-                    </form>
-                </div>
+                            </AnimatePresence>
+
+                            <motion.div variants={formVariants}>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full group flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 to-red-800 text-white font-bold py-3.5 px-4 rounded-xl hover:from-red-700 hover:to-red-900 focus:outline-none focus:ring-4 focus:ring-red-300 transition-all duration-300 transform hover:-translate-y-1 disabled:from-red-400 disabled:to-red-500 disabled:cursor-not-allowed disabled:transform-none shadow-2xl hover:shadow-red-500/50"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            <span>Signing In...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>Sign In</span>
+                                            <FiArrowRight className="transition-transform duration-300 group-hover:translate-x-1.5" />
+                                        </>
+                                    )}
+                                </button>
+                            </motion.div>
+                        </form>
+                    </div>
                 </motion.div>
             </div>
         </motion.div>
