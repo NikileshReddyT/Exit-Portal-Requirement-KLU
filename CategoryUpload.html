@@ -99,7 +99,7 @@
           const formData = new FormData();
           formData.append("file", file);
 
-          fetch("http://localhost:8080/api/categories/populate", {
+          fetch("https://exit-portal-requirement-klu-production.up.railway.app/api/categories/populate", {
             method: "POST",
             body: formData,
           })

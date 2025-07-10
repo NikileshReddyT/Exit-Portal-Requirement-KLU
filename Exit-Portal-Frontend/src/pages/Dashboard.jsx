@@ -214,9 +214,6 @@ const Dashboard = () => {
                                 )}
                             </AnimatePresence>
                         </div>
-                        <div className="hidden md:block">
-                            <CategoryList categories={categories.slice(0, 3)} onShowPopup={handleNavigateToDetails} />
-                        </div>
                     </motion.div>
                 </motion.div>
             </main>

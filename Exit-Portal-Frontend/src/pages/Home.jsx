@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { FiArrowRight, FiBarChart2, FiCheckSquare, FiDownload, FiBookOpen, FiLogIn, FiUserCheck, FiThumbsUp, FiZap, FiSmartphone, FiShield } from 'react-icons/fi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FiArrowRight, FiBarChart2, FiCheckSquare, FiDownload, FiBookOpen, FiLogIn, FiUserCheck, FiThumbsUp, FiZap, FiSmartphone, FiShield, FiChevronDown } from 'react-icons/fi';
 import bg from '../images/bg.jpg';
 
 const FeatureCard = ({ icon, title, children, delay }) => (
@@ -39,6 +39,20 @@ const StepCard = ({ icon, title, children, delay }) => (
 
 
 const Home = () => {
+    const [showScrollIndicator, setShowScrollIndicator] = useState(true);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            if (window.scrollY > 50) {
+                setShowScrollIndicator(false);
+            } else {
+                setShowScrollIndicator(true);
+            }
+        };
+
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
     return (
         <div className="font-sans bg-gray-50 text-gray-800">
             <div 
@@ -55,8 +69,10 @@ const Home = () => {
 
             <div className="relative z-10 overflow-x-hidden">
                 {/* Hero Section */}
-                <header className="min-h-screen flex items-center justify-center text-center p-6">
+                <header className="min-h-screen flex flex-col items-center justify-center text-center p-6 relative">
+                    {/* Main Content */}
                     <motion.div
+                        className="flex flex-col items-center justify-center"
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -97,6 +113,28 @@ const Home = () => {
                             </Link>
                         </motion.div>
                     </motion.div>
+
+                    {/* Scroll Down Indicator */}
+                    <AnimatePresence>
+                        {showScrollIndicator && (
+                            <motion.div
+                                className="absolute bottom-10 left-1/2 -translate-x-1/2"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ duration: 0.5, ease: 'easeOut' }}
+                            >
+                                <motion.div
+                                    animate={{ y: [0, 10, 0] }}
+                                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                                    className="flex flex-col items-center gap-2"
+                                >
+                                    <span className="text-white text-xs md:text-sm opacity-90 tracking-widest uppercase">Scroll</span>
+                                    <FiChevronDown className="text-white text-2xl md:text-3xl opacity-90" />
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </header>
 
             {/* Features Section */}

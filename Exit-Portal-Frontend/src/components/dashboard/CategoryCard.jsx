@@ -75,13 +75,15 @@ const CategoryCard = ({ category, index }) => {
                              <motion.div
                                 className={`h-2.5 rounded-full ${isCategoryCompleted ? 'bg-green-400' : 'bg-red-900'}`}
                                 initial={{ width: '0%' }}
-                                animate={{ width: `${Math.min(100, coursesProgress)}%` }}
+                                whileInView={{ width: `${Math.min(100, coursesProgress)}%` }}
+                                viewport={{ once: true, amount: 0.5 }}
                                 transition={{ duration: 1, ease: 'easeInOut' }}
                             />
                             <motion.div 
                                 className={`absolute top-1/2 -translate-y-1/2 h-[13px] w-[13px] rounded-full ${isCategoryCompleted ? 'bg-green-400' : 'bg-red-900'}`}
                                 initial={{ left: '0%' }}
-                                animate={{ left: `${Math.min(100, coursesProgress)-2}%` }}
+                                whileInView={{ left: `${Math.min(100, coursesProgress)-2}%` }}
+                                viewport={{ once: true, amount: 0.5 }}
                                 transition={{ duration: 1, ease: 'easeInOut' }}
                             />
                         </div>
