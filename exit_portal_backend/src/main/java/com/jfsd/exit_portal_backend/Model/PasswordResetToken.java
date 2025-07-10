@@ -18,13 +18,23 @@ public class PasswordResetToken {
 
     private Date expiryDate;
 
+    public static final int EXPIRATION = 3600000; // 1 hour in milliseconds
+
+    private Date calculateExpiryDate(int expiration) {
+        return new Date(System.currentTimeMillis() + expiration);
+    }
+
     public PasswordResetToken() {}
 
     public PasswordResetToken(String token, StudentCredentials student) {
         this.token = token;
         this.student = student;
-        // Token expires in 1 hour
-        this.expiryDate = new Date(System.currentTimeMillis() + 3600000);
+        this.expiryDate = calculateExpiryDate(EXPIRATION);
+    }
+
+    public void updateToken(String newToken) {
+        this.token = newToken;
+        this.expiryDate = calculateExpiryDate(EXPIRATION);
     }
 
     public Long getId() {

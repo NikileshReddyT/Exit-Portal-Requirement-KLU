@@ -29,10 +29,18 @@ public class PasswordResetService {
     public void createPasswordResetTokenForUser(String universityId) {
         StudentCredentials student = studentCredentialsRepository.findByStudentId(universityId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        String token = UUID.randomUUID().toString();
-        PasswordResetToken myToken = new PasswordResetToken(token, student);
+
+        PasswordResetToken myToken = tokenRepository.findByStudent(student);
+
+        if (myToken == null) {
+            myToken = new PasswordResetToken();
+            myToken.setStudent(student);
+        }
+
+        myToken.updateToken(UUID.randomUUID().toString());
         tokenRepository.save(myToken);
-        emailService.sendPasswordResetEmail(student.getStudentId() + "@kluniversity.in", token);
+
+        emailService.sendPasswordResetEmail(student.getStudentId() + "@kluniversity.in", myToken.getToken());
     }
 
     public String validatePasswordResetToken(String token) {
