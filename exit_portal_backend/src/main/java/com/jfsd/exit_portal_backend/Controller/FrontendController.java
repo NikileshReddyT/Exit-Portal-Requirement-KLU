@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.jfsd.exit_portal_backend.Model.Courses;
 import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
@@ -27,27 +29,30 @@ import com.jfsd.exit_portal_backend.Service.FrontendService;
 @RequestMapping("/api/v1/frontend")
 public class FrontendController {
 
+    private static final Logger logger = LoggerFactory.getLogger(FrontendController.class);
+
     @Autowired
     private FrontendService frontendService;
 
     @PostMapping("/getdata")
     public ResponseEntity<List<StudentCategoryProgress>> getdata(@RequestBody Student request) {
-        System.out.println(request.getUniversityid());
-        return ResponseEntity.ok(frontendService.getStudentCategoryProgress(request.getUniversityid()));
+        System.out.println(request.getUniversityId());
+        return ResponseEntity.ok(frontendService.getStudentCategoryProgress(request.getUniversityId()));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Login loginRequest) {
+    public ResponseEntity<?> login(@RequestBody Login login) {
+        logger.info("Login attempt for university ID: {}", login.getUniversityId());
         try {
-            System.out.println(loginRequest.getUniversityId() + " " + loginRequest.getPassword());
-            Student studentData = frontendService.authenticateStudent(loginRequest.getUniversityId(), loginRequest.getPassword());
-            return ResponseEntity.ok(studentData);
-        } catch (InvalidPasswordException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Incorrect password. Please try again."));
-        } catch (UserNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "User not found. Please check your university ID."));
+            Student student = frontendService.authenticateStudent(login.getUniversityId(), login.getPassword());
+            logger.info("Login successful for university ID: {}", login.getUniversityId());
+            return ResponseEntity.ok(student);
+        } catch (UserNotFoundException | InvalidPasswordException e) {
+            logger.error("Login failed for university ID: {}. Reason: {}", login.getUniversityId(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "An unexpected error occurred."));
+            logger.error("An unexpected error occurred during login for university ID: {}", login.getUniversityId(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An unexpected error occurred. Please try again later.");
         }
     }
     

@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.jfsd.exit_portal_backend.RequestBodies.CategoryCoursesDTO;
 import com.jfsd.exit_portal_backend.RequestBodies.InvalidPasswordException;
@@ -18,49 +21,56 @@ import com.jfsd.exit_portal_backend.Repository.StudentCategoryProgressRepository
 import com.jfsd.exit_portal_backend.Repository.StudentCredentialsRepository;
 import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
 import com.jfsd.exit_portal_backend.Repository.CoursesRepository;
+
 import com.jfsd.exit_portal_backend.RequestBodies.Student;
 
 @Service
 public class FrontendService {
 
+    private static final Logger logger = LoggerFactory.getLogger(FrontendService.class);
+
     @Autowired
     private StudentCategoryProgressRepository studentCategoryProgressRepository;
 
     @Autowired
+    private StudentCredentialsRepository studentCredentialsRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
     private StudentGradeRepository studentGradeRepository;
+
+
 
     @Autowired
     private CoursesRepository coursesRepository;
 
-    @Autowired
-    private StudentCredentialsRepository studentCredentialsRepository;
-
-    public List<StudentCategoryProgress> getStudentCategoryProgress(String request) {
-        return studentCategoryProgressRepository.findByUniversityId(request);
+    public List<StudentCategoryProgress> getStudentCategoryProgress(String universityId) {
+        return studentCategoryProgressRepository.findByUniversityId(universityId);
     }
 
     // Updated method to check both universityId and password
-    public Student authenticateStudent(String studentId, String password) throws Exception {
-        StudentCredentials studentCredentials = studentCredentialsRepository.findByStudentId(studentId)
-                .orElseThrow(() -> new UserNotFoundException("User not found."));
-    
-        if (!studentCredentials.getPassword().equals(password)) {
+    public Student authenticateStudent(String universityId, String password) {
+        logger.info("Authenticating student with ID: {}", universityId);
+        StudentCredentials studentCredentials = studentCredentialsRepository.findByStudentId(universityId)
+                .orElseThrow(() -> {
+                    logger.warn("Authentication failed: User not found with ID: {}", universityId);
+                    return new UserNotFoundException("User not found.");
+                });
+
+        logger.info("User found. Checking password.");
+        if (!passwordEncoder.matches(password, studentCredentials.getPassword())) {
+            logger.warn("Authentication failed: Incorrect password for user ID: {}", universityId);
             throw new InvalidPasswordException("Incorrect password.");
         }
-    
+
+        logger.info("Password verified. Authentication successful for user ID: {}", universityId);
         Student studentData = new Student();
-        studentData.setUniversityid(studentCredentials.getStudentId());
+        studentData.setUniversityId(studentCredentials.getStudentId());
         return studentData;
     }
-    
 
-
-
-
-
-
-
-    
     public List<StudentGrade> getCoursesByCategory(String universityId, String category) {
         return studentGradeRepository.findByUniversityIdAndCategory(universityId, category);
     }

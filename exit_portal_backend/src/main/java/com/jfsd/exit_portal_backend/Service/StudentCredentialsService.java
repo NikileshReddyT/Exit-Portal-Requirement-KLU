@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +29,9 @@ public class StudentCredentialsService {
     @Autowired
     private StudentCredentialsRepository studentCredentialsRepository;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     // Method to generate and save unique student credentials
     public List<StudentCredentials> generateAndSaveUniqueStudentCredentials() {
         // Retrieve all unique student IDs from the StudentGrade repository
@@ -42,7 +46,8 @@ public class StudentCredentialsService {
         for (String studentId : uniqueStudentIds) {
             // Generate a 6-digit random password
             String password = String.format("%06d", random.nextInt(999999));
-            StudentCredentials credential = new StudentCredentials(studentId, password);
+            String hashedPassword = passwordEncoder.encode(password);
+            StudentCredentials credential = new StudentCredentials(studentId, hashedPassword);
             credentials.add(credential);
         }
 
@@ -65,36 +70,49 @@ public class StudentCredentialsService {
         }
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-            // Skip the header line if it exists
-            String line = reader.readLine();
-            
-            List<StudentCredentials> credentials = new ArrayList<>();
-            
+            String line = reader.readLine(); // Assuming header line
+
+            List<StudentCredentials> credentialsToSave = new ArrayList<>();
+            int updatedCount = 0;
+            int createdCount = 0;
+
             while ((line = reader.readLine()) != null) {
                 String[] fields = line.split(",");
-                
-                // Validate that we have both studentId and password
+
                 if (fields.length != 2) {
-                    return ResponseEntity.badRequest().body("Invalid CSV format. Each line should contain studentId and password.");
+                    continue; // Skip malformed lines
                 }
-                
+
                 String studentId = fields[0].trim();
                 String password = fields[1].trim();
-                
-                // Basic validation
+
                 if (studentId.isEmpty() || password.isEmpty()) {
                     continue; // Skip empty entries
                 }
-                
-                StudentCredentials credential = new StudentCredentials(studentId, password);
-                credentials.add(credential);
+
+                String hashedPassword = passwordEncoder.encode(password);
+
+                Optional<StudentCredentials> existingCredentialOpt = studentCredentialsRepository.findByStudentId(studentId);
+
+                if (existingCredentialOpt.isPresent()) {
+                    // Update existing credential
+                    StudentCredentials existingCredential = existingCredentialOpt.get();
+                    existingCredential.setPassword(hashedPassword);
+                    credentialsToSave.add(existingCredential);
+                    updatedCount++;
+                } else {
+                    // Create new credential
+                    StudentCredentials newCredential = new StudentCredentials(studentId, hashedPassword);
+                    credentialsToSave.add(newCredential);
+                    createdCount++;
+                }
             }
-            
-            // Save all valid credentials to the database
-            studentCredentialsRepository.saveAll(credentials);
-            
-            return ResponseEntity.ok("Successfully imported " + credentials.size() + " student credentials.");
-            
+
+            studentCredentialsRepository.saveAll(credentialsToSave);
+
+            String message = String.format("CSV processed successfully: %d records created, %d records updated.", createdCount, updatedCount);
+            return ResponseEntity.ok(message);
+
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body("Failed to process the CSV file: " + e.getMessage());

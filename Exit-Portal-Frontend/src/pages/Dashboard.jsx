@@ -17,6 +17,7 @@ const Dashboard = () => {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [noDataFound, setNoDataFound] = useState(false);
     const [isSummaryOpen, setIsSummaryOpen] = useState(false);
     const [isCategoriesOpen, setIsCategoriesOpen] = useState(true);
 
@@ -34,6 +35,7 @@ const Dashboard = () => {
                 setLoading(true);
                 const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: studentId });
                 const data = response.data;
+                console.log(data);
 
                 if (data && data.length > 0) {
                     setStudent({
@@ -56,9 +58,11 @@ const Dashboard = () => {
                     });
 
                     setCategories(data);
+                    setNoDataFound(false);
                 } else {
                     setStudent({ name: 'Student', universityId: studentId });
                     setSummaryData({ totalRequiredCredits: 0, totalCompletedCredits: 0, isCertificateEligible: false, isSpecializationCompleted: false });
+                    setNoDataFound(true);
                 }
 
             } catch (err) {
@@ -91,8 +95,32 @@ const Dashboard = () => {
                 <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    className="w-16 h-16 border-4 border-brand-red border-t-transparent rounded-full"
+                    className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full"
                 />
+            </div>
+        );
+    }
+
+    if (noDataFound) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex flex-col">
+                <Navbar student={student} />
+                <main className="flex-1 flex items-center justify-center text-center p-4">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="bg-white p-8 rounded-xl shadow-lg max-w-md"
+                    >
+                        <h2 className="text-2xl font-bold text-brand-charcoal mb-3">Welcome!</h2>
+                        <p className="text-gray-600 mb-6">
+                            Your academic data is not yet available in the portal. This is common for new students whose records are being processed.
+                        </p>
+                        <p className="text-gray-500 text-sm">
+                            If you believe this is an error, please contact the administration office.
+                        </p>
+                    </motion.div>
+                </main>
             </div>
         );
     }

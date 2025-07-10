@@ -3,6 +3,7 @@ package com.jfsd.exit_portal_backend.Model;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.Column;
 import jakarta.persistence.Id;
 
 @Entity
@@ -12,6 +13,7 @@ public class StudentCredentials {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @Column(unique = true, nullable = false)
     private String studentId;
     private String password;
 

@@ -1,12 +1,17 @@
 package com.jfsd.exit_portal_backend.RequestBodies;
 
-import lombok.Getter;
-import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-@Getter
-@Setter
 public class Student {
 
-    private String universityid;
+    @JsonProperty("universityid")
+    private String universityId;
 
+    public String getUniversityId() {
+        return universityId;
+    }
+
+    public void setUniversityId(String universityId) {
+        this.universityId = universityId;
+    }
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence, scale } from 'framer-motion';
 import { FiUser, FiLock, FiLogIn, FiLoader, FiAlertTriangle, FiArrowRight } from 'react-icons/fi';
@@ -100,15 +100,16 @@ const Login = () => {
             </motion.div>
 
             {/* Right Panel - Login Form */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12">
+            <div className="w-full xl:w-1/2 flex items-center justify-center p-8 sm:p-12">
                 <motion.div 
                     variants={formVariants}
-                    className="w-full max-w-md"
+                    className="w-full max-w-md h-full lg:h-auto flex flex-col justify-between items-center"
                 >
-                    <div className="text-center lg:hidden mb-10">
+                    <div className="text-center lg:hidden mt-4 ">
                         <h1 className="text-3xl font-bold text-brand-charcoal tracking-wider">Exit Requirement Portal</h1>
                         <p className="text-gray-500 mt-2">Unlock Your Academic Journey.</p>
                     </div>
+                <div className="my-auto">
                     <motion.h2 variants={formVariants} className="text-4xl font-bold text-brand-charcoal mb-3">Sign In</motion.h2>
                     <motion.p variants={formVariants} className="text-gray-500 mb-10">Welcome back! Please enter your credentials.</motion.p>
 
@@ -147,6 +148,11 @@ const Login = () => {
                                     required
                                 />
                             </div>
+                            <div className="text-right mt-2">
+                                <Link to="/forgot-password" className="text-sm text-brand-red hover:underline font-medium">
+                                    Forgot Password?
+                                </Link>
+                            </div>
                         </motion.div>
 
                         <AnimatePresence>
@@ -182,6 +188,7 @@ const Login = () => {
                             </button>
                         </motion.div>
                     </form>
+                </div>
                 </motion.div>
             </div>
         </motion.div>
