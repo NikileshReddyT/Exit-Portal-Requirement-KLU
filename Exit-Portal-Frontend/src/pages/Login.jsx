@@ -73,7 +73,7 @@ const Login = () => {
             {/* Left Panel */}
             <motion.div
                 variants={leftPanelVariants}
-                className="hidden lg:flex lg:w-1/2 bg-brand-charcoal p-12 flex-col justify-between relative overflow-hidden z-10"
+                className="hidden md:flex lg:w-1/2 bg-brand-charcoal p-12 flex-col justify-between relative overflow-hidden z-10"
                 style={{
                     backgroundImage: `url(${bg})`,
                     backgroundSize: 'cover',
