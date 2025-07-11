@@ -120,14 +120,16 @@ const PdfDownloadButton = ({ studentId }) => {
         if (yA !== yB) return yA - yB;
         return SEM_ORDER[a.semester] - SEM_ORDER[b.semester];
       });
-      const body = sorted.map(c => [
-        c.year,
-        c.semester,
-        c.courseCode,
-        c.courseName,
-        c.credits,
-        c.grade
-      ]);
+      const body = sorted.length > 0
+        ? sorted.map(c => [
+            c.year,
+            c.semester,
+            c.courseCode,
+            c.courseName,
+            c.credits,
+            c.grade
+          ])
+        : [[{ content: 'No courses completed in this category.', colSpan: 6, styles: { halign: 'center', fontStyle: 'italic', textColor: '#777' } }]];
 
       doc.autoTable({
         startY: y,

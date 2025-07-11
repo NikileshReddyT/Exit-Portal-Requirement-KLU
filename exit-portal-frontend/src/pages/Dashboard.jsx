@@ -178,29 +178,18 @@ const Dashboard = () => {
 
                     {/* Categories Preview Section */}
                     <motion.div variants={itemVariants} className="bg-white md:bg-transparent rounded-lg shadow-sm md:shadow-none">
-                        {/* Mobile Accordion Header */}
-                        <div className="md:hidden flex justify-between items-center p-4">
-                            <h2 className="text-xl font-bold text-brand-charcoal cursor-pointer" onClick={() => setIsCategoriesOpen(!isCategoriesOpen)}>
-                                Requirement Categories
-                            </h2>
-                            <Link to="/categories" className="group flex items-center text-brand-red font-semibold text-sm">
+                        {/* Unified Requirement Categories Header */}
+                        <div className="flex justify-between items-center mb-4 bg-white px-4 py-3 rounded-lg gap-2 flex-col sm:flex-row">
+                            <h2 className="text-xl md:text-2xl font-bold text-brand-charcoal">Requirement Categories</h2>
+                            <Link to="/categories" className="group flex items-center font-semibold hover:underline text-sm md:text-base bg-red-900 sm:bg-transparent sm:text-red-900 sm:text-brand-red text-white px-3 py-2 rounded">
                                 <span>View All</span>
-                                <FiArrowRight className="ml-1 transition-transform duration-300 group-hover:translate-x-1" />
-                            </Link>
-                        </div>
-
-                        {/* Desktop-only Title */}
-                        <div className="hidden md:flex justify-between items-center mb-4">
-                            <h2 className="text-2xl font-bold text-brand-charcoal">Requirement Categories</h2>
-                            <Link to="/categories" className="group flex items-center text-brand-red font-semibold hover:underline">
-                                <span>View All</span>
-                                <FiArrowRight className="ml-2 transition-transform duration-300 group-hover:translate-x-1" />
+                                <FiArrowRight className="ml-1 md:ml-2 transition-transform duration-300 group-hover:translate-x-1" />
                             </Link>
                         </div>
                         
                         {/* Content - Collapsible on mobile, always visible on desktop */}
-                        <div className="md:block" style={{ display: isCategoriesOpen ? 'block' : 'none' }}>
-                             <AnimatePresence>
+                        <div className="block">
+                            <AnimatePresence>
                                 {isCategoriesOpen && (
                                     <motion.div
                                         key="categories-content"
