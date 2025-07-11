@@ -7,8 +7,8 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(() => {
-        
-        return null;
+        const storedUser = localStorage.getItem('user');
+        return storedUser ? JSON.parse(storedUser) : null;
     });
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -56,10 +56,10 @@ export const AuthProvider = ({ children }) => {
 
     // This function allows other parts of the app (like DataContext) to add info to the user object.
     const updateUser = useCallback((updates) => {
-        
         setUser(prevUser => {
+            // Ensure we have a previous user object to update
+            if (!prevUser) return null;
             const updatedUser = { ...prevUser, ...updates };
-            
             localStorage.setItem('user', JSON.stringify(updatedUser));
             return updatedUser;
         });
