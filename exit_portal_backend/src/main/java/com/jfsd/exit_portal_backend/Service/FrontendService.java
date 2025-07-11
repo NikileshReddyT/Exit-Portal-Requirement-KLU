@@ -2,6 +2,8 @@ package com.jfsd.exit_portal_backend.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import com.jfsd.exit_portal_backend.RequestBodies.CategoryCoursesDTO;
 import com.jfsd.exit_portal_backend.RequestBodies.InvalidPasswordException;
+import com.jfsd.exit_portal_backend.RequestBodies.StudentCategoryProgressDTO;
 import com.jfsd.exit_portal_backend.RequestBodies.StudentCourseReportDTO;
 import com.jfsd.exit_portal_backend.RequestBodies.UserNotFoundException;
 import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
@@ -80,53 +83,47 @@ public class FrontendService {
     }
 
     public StudentCourseReportDTO generateStudentReport(String universityId) {
-        List<StudentCategoryProgress> categoryProgressList = studentCategoryProgressRepository.findByUniversityId(universityId);
-        if (categoryProgressList == null || categoryProgressList.isEmpty()) {
-            return null;
+        // Step 1: Use the highly optimized query to get all progress aggregates in one shot.
+        List<StudentCategoryProgressDTO> progressSummary = studentCategoryProgressRepository.findStudentProgressSummary(universityId);
+        if (progressSummary == null || progressSummary.isEmpty()) {
+            return null; // No progress data found for the student.
         }
 
-        // Optimization: Fetch all grades for the student in one query to solve N+1 problem
+        // Step 2: Fetch all student grades in a second, efficient query.
         List<StudentGrade> allStudentGrades = studentGradeRepository.findByUniversityId(universityId);
-        java.util.Map<String, List<StudentGrade>> gradesByCategory = allStudentGrades.stream()
-                .collect(java.util.stream.Collectors.groupingBy(StudentGrade::getCategory));
+        Map<String, List<StudentGrade>> gradesByCategory = allStudentGrades.stream()
+                .collect(Collectors.groupingBy(StudentGrade::getCategory));
+
+        // Step 3: Get student's name from the first available record.
+        StudentCategoryProgress studentInfo = studentCategoryProgressRepository.findFirstByUniversityId(universityId);
+        String studentName = (studentInfo != null) ? studentInfo.getStudentName() : "Student";
 
         StudentCourseReportDTO reportDTO = new StudentCourseReportDTO();
         reportDTO.setStudentId(universityId);
-        reportDTO.setStudentName(categoryProgressList.get(0).getStudentName());
+        reportDTO.setStudentName(studentName);
 
         List<CategoryCoursesDTO> categoryDTOs = new ArrayList<>();
         int totalRegisteredCourses = 0;
         double totalRegisteredCredits = 0.0;
 
-        for (StudentCategoryProgress progress : categoryProgressList) {
+        // Step 4: Combine the aggregated data with the detailed course lists.
+        for (StudentCategoryProgressDTO progress : progressSummary) {
             CategoryCoursesDTO categoryDTO = new CategoryCoursesDTO();
             categoryDTO.setCategoryName(progress.getCategoryName());
             categoryDTO.setMinRequiredCourses(progress.getMinRequiredCourses());
             categoryDTO.setMinRequiredCredits(progress.getMinRequiredCredits());
+            categoryDTO.setRegisteredCourses((int) progress.getRegisteredCourses());
+            categoryDTO.setRegisteredCredits(progress.getRegisteredCredits());
+            categoryDTO.setCompletedCourses((int) progress.getCompletedCourses());
+            categoryDTO.setCompletedCredits(progress.getCompletedCredits());
 
-            // Optimization: Get grades from the map (no database call in the loop)
-            List<StudentGrade> studentGrades = gradesByCategory.getOrDefault(progress.getCategoryName(), new ArrayList<>());
-            categoryDTO.setCourses(studentGrades);
-
-            int completedCoursesCount = 0;
-            double completedCreditsSum = 0.0;
-            for (StudentGrade grade : studentGrades) {
-                // Assuming 'F' grade means not passed. Adjust if other grades also mean failure.
-                if (grade.getGrade() != null && !grade.getGrade().equalsIgnoreCase("F")) {
-                    completedCoursesCount++;
-                    completedCreditsSum += grade.getCredits();
-                }
-            }
-
-            categoryDTO.setRegisteredCourses(studentGrades.size());
-            categoryDTO.setRegisteredCredits(studentGrades.stream().mapToDouble(StudentGrade::getCredits).sum());
-            categoryDTO.setCompletedCourses(completedCoursesCount);
-            categoryDTO.setCompletedCredits(completedCreditsSum);
+            // Add the detailed course list from the map.
+            categoryDTO.setCourses(gradesByCategory.getOrDefault(progress.getCategoryName(), new ArrayList<>()));
 
             categoryDTOs.add(categoryDTO);
 
-            totalRegisteredCourses += studentGrades.size();
-            totalRegisteredCredits += studentGrades.stream().mapToDouble(StudentGrade::getCredits).sum();
+            totalRegisteredCourses += progress.getRegisteredCourses();
+            totalRegisteredCredits += progress.getRegisteredCredits();
         }
 
         reportDTO.setCategories(categoryDTOs);
