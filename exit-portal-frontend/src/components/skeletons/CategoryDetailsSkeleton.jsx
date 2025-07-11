@@ -12,18 +12,25 @@ export const CategoryDetailsSkeleton = () => (
           <div className="h-10 w-40 bg-gray-200 rounded-lg"></div>
         </div>
 
-        {/* Category Header and Progress */}
-        <div className="bg-white rounded-xl shadow-md p-6 mb-8">
-          <div className="h-8 bg-gray-300 rounded w-1/2 mb-4"></div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="h-5 bg-gray-300 rounded w-1/4"></div>
-            <div className="h-5 bg-gray-300 rounded w-1/5"></div>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-            <div className="bg-gray-300 h-2.5 rounded-full w-3/4"></div>
-          </div>
-          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-        </div>
+        <div className="bg-white rounded-xl shadow-md p-6 mb-8 animate-pulse">
+  <div className="flex items-center justify-between">
+    {/* Left side: Text lines */}
+    <div className="flex flex-col space-y-2">
+      <div className="h-4 bg-gray-300 rounded w-24"></div> {/* Progress label */}
+      <div className="h-6 bg-gray-300 rounded w-48"></div> {/* 9 / 10 Courses */}
+      <div className="h-4 bg-gray-300 rounded w-64"></div> {/* "You need to complete..." */}
+    </div>
+
+    {/* Right side: Progress bar */}
+    <div className="flex flex-col items-end w-1/3 space-y-2">
+      <div className="w-full bg-gray-200 rounded-full h-3">
+        <div className="bg-gray-300 h-3 rounded-full w-[90%]"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Side: Completed Courses */}
