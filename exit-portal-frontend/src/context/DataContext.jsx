@@ -17,34 +17,45 @@ export const DataProvider = ({ children }) => {
     const [error, setError] = useState(null);
 
     const fetchStudentProgress = useCallback(async () => {
-        if (!user?.universityId) return;
+        if (!user?.universityId) {
+            console.log('[DataContext] fetchStudentProgress skipped: no universityId.');
+            return;
+        }
 
-        
+        console.log(`[DataContext] Fetching student progress for universityId: ${user.universityId}`);
         setLoadingProgress('pending');
         try {
             const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: user.universityId });
+            console.log('[DataContext] Received student progress data:', response.data);
             
             setStudentProgressData(response.data);
             setLoadingProgress('succeeded');
 
             // Enrich the user object in AuthContext with the student's name
             if (response.data && response.data.length > 0) {
-                updateUser({ name: response.data[0].studentName });
+                const studentName = response.data[0].studentName;
+                console.log(`[DataContext] Found student name: "${studentName}". Calling updateUser.`);
+                updateUser({ name: studentName });
+            } else {
+                console.log('[DataContext] No student data in response to extract name from.');
             }
         } catch (err) {
-            
+            console.error('[DataContext] Error fetching student data:', err);
             setError('Failed to load student data.');
             setLoadingProgress('failed');
         }
     }, [user?.universityId, updateUser]);
 
     useEffect(() => {
+        console.log(`[DataContext] useEffect triggered. isAuthenticated: ${isAuthenticated}, studentProgressData exists: ${!!studentProgressData}`);
         // Fetch data only when the user is authenticated and data hasn't been fetched yet.
         if (isAuthenticated && !studentProgressData) {
+            console.log('[DataContext] Conditions met, calling fetchStudentProgress.');
             fetchStudentProgress();
         }
         // If user logs out, clear the data.
         if (!isAuthenticated) {
+            console.log('[DataContext] User logged out, clearing data.');
             setStudentProgressData(null);
             setFullReportData(null);
         }

@@ -25,22 +25,39 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (credentials) => {
         try {
-            const response = await axios.post(`${config.backendUrl}/api/v1/frontend/login`, {
+            // Step 1: Authenticate the user
+            const loginResponse = await axios.post(`${config.backendUrl}/api/v1/frontend/login`, {
                 universityId: credentials.universityId,
                 password: credentials.password
             });
-            
-            if (response.data && response.data.universityid) {
-                const userData = { universityId: response.data.universityid };
+
+            if (loginResponse.data && loginResponse.data.universityid) {
+                const universityId = loginResponse.data.universityid;
+                console.log(`[AuthContext] Login successful for universityId: ${universityId}`);
+
+                // Step 2: Fetch student data to get the name
+                console.log('[AuthContext] Fetching student details...');
+                const dataResponse = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: universityId });
+
+                let studentName = null;
+                if (dataResponse.data && dataResponse.data.length > 0) {
+                    studentName = dataResponse.data[0].studentName;
+                    console.log(`[AuthContext] Found student name: "${studentName}"`);
+                }
+
+                // Step 3: Create a complete user object and update the state
+                const userData = { universityId, name: studentName };
+                console.log('[AuthContext] Setting complete user object:', userData);
                 
                 setUser(userData);
                 setIsAuthenticated(true);
                 localStorage.setItem('user', JSON.stringify(userData));
-                return true;
+                
+                return true; // Indicate success
             }
-            return false;
+            return false; // Indicate login failure
         } catch (err) {
-            
+            console.error('[AuthContext] Login process failed:', err);
             // Re-throw the error so the UI component can catch it and display a message
             throw err;
         }
@@ -56,10 +73,14 @@ export const AuthProvider = ({ children }) => {
 
     // This function allows other parts of the app (like DataContext) to add info to the user object.
     const updateUser = useCallback((updates) => {
+        console.log('[AuthContext] Attempting to update user with:', updates);
         setUser(prevUser => {
-            // Ensure we have a previous user object to update
-            if (!prevUser) return null;
+            if (!prevUser) {
+                console.log('[AuthContext] No previous user state to update.');
+                return null;
+            }
             const updatedUser = { ...prevUser, ...updates };
+            console.log('[AuthContext] User state updated:', updatedUser);
             localStorage.setItem('user', JSON.stringify(updatedUser));
             return updatedUser;
         });
