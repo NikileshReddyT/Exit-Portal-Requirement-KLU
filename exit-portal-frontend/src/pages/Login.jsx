@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence, scale } from 'framer-motion';
@@ -12,6 +13,7 @@ const Login = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const { login } = useAuth();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -19,14 +21,8 @@ const Login = () => {
         setLoading(true);
 
         try {
-            const response = await axios.post(`${config.backendUrl}/api/v1/frontend/login`, {
-                universityId: id,
-                password: password
-            });
-
-            if (response.data && response.data.universityid) {
-                localStorage.clear();
-                localStorage.setItem('studentId', response.data.universityid);
+            const success = await login({ universityId: id, password });
+            if (success) {
                 navigate('/dashboard');
             } else {
                 setError('Unexpected response from server.');

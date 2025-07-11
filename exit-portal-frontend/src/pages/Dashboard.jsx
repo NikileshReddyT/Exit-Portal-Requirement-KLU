@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import config from '../config';
+
 
 import Navbar from '../components/layout/Navbar';
 import { FiTrendingUp, FiAward, FiCheckCircle, FiXCircle, FiArrowRight, FiChevronDown } from 'react-icons/fi';
@@ -11,69 +12,42 @@ import CategoryList from '../components/dashboard/CategoryList';
 import Summary, { ProgressCircle, SummaryCards } from '../components/dashboard/Summary';
 
 const Dashboard = () => {
+    
     const navigate = useNavigate();
-    const [student, setStudent] = useState(null);
-    const [summaryData, setSummaryData] = useState(null);
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [noDataFound, setNoDataFound] = useState(false);
+    const { user } = useAuth();
+    
+    const { studentProgressData, loadingProgress, error } = useData();
+    
+
     const [isSummaryOpen, setIsSummaryOpen] = useState(false);
     const [isCategoriesOpen, setIsCategoriesOpen] = useState(true);
 
-    const overallProgress = summaryData ? (summaryData.totalCompletedCredits / summaryData.totalRequiredCredits) * 100 : 0;
+    const loading = loadingProgress === 'pending';
 
-    useEffect(() => {
-        const studentId = localStorage.getItem('studentId');
-        if (!studentId) {
-            navigate('/');
-            return;
+    const { summaryData, categories, noDataFound } = useMemo(() => {
+        if (!studentProgressData || studentProgressData.length === 0) {
+            return { summaryData: null, categories: [], noDataFound: true };
         }
 
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: studentId });
-                const data = response.data;
-                console.log(data);
+        const data = studentProgressData;
+        const totalCategories = data.length;
+        const completedCategories = data.filter(cat => cat.completedCourses >= cat.minRequiredCourses).length;
+        const totalRequiredCredits = data.reduce((acc, cat) => acc + cat.minRequiredCredits, 0);
+        const totalCompletedCredits = data.reduce((acc, cat) => acc + cat.completedCredits, 0);
 
-                if (data && data.length > 0) {
-                    setStudent({
-                        name: data[0].studentName,
-                        universityId: data[0].universityId,
-                    });
-
-                    const totalCategories = data.length;
-                    const completedCategories = data.filter(cat => cat.completedCourses >= cat.minRequiredCourses).length;
-                    const totalRequiredCredits = data.reduce((acc, cat) => acc + cat.minRequiredCredits, 0);
-                    const totalCompletedCredits = data.reduce((acc, cat) => acc + cat.completedCredits, 0);
-
-                    setSummaryData({
-                        totalCompletedCredits,
-                        totalRequiredCredits,
-                        isCertificateEligible: data.every(cat => cat.completedCourses >= cat.minRequiredCourses),
-                        isSpecializationCompleted: (data.slice(5, 10) || []).every(cat => cat.completedCourses >= cat.minRequiredCourses),
-                        totalCategories,
-                        completedCategories
-                    });
-
-                    setCategories(data);
-                    setNoDataFound(false);
-                } else {
-                    setStudent({ name: 'Student', universityId: studentId });
-                    setSummaryData({ totalRequiredCredits: 0, totalCompletedCredits: 0, isCertificateEligible: false, isSpecializationCompleted: false });
-                    setNoDataFound(true);
-                }
-
-            } catch (err) {
-                setError('Failed to load dashboard. Please try again later.');
-            } finally {
-                setLoading(false);
-            }
+        const summary = {
+            totalCompletedCredits,
+            totalRequiredCredits,
+            isCertificateEligible: data.every(cat => cat.completedCourses >= cat.minRequiredCourses),
+            isSpecializationCompleted: (data.slice(5, 10) || []).every(cat => cat.completedCourses >= cat.minRequiredCourses),
+            totalCategories,
+            completedCategories
         };
 
-        fetchData();
-    }, [navigate]);
+        return { summaryData: summary, categories: data, noDataFound: false };
+    }, [studentProgressData]);
+
+    const overallProgress = summaryData ? (summaryData.totalCompletedCredits / summaryData.totalRequiredCredits) * 100 : 0;
 
     const handleNavigateToDetails = (categoryName) => {
         navigate(`/category/${encodeURIComponent(categoryName)}`);
@@ -104,7 +78,7 @@ const Dashboard = () => {
     if (noDataFound) {
         return (
             <div className="min-h-screen bg-gray-50 flex flex-col">
-                <Navbar student={student} />
+                <Navbar />
                 <main className="flex-1 flex items-center justify-center text-center p-4">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -139,7 +113,7 @@ const Dashboard = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
-            <Navbar student={student} />
+            <Navbar />
             <main className="p-4 sm:p-6 lg:p-8">
                 <motion.div
                     variants={containerVariants}
@@ -149,11 +123,11 @@ const Dashboard = () => {
                 >
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
                         <motion.div variants={itemVariants}>
-                            <h1 className="text-3xl font-bold text-brand-charcoal">Welcome, {student?.name}</h1>
+                            <h1 className="text-3xl font-bold text-brand-charcoal">Welcome, {user?.name}</h1>
                             <p className="text-gray-500 mt-1">Here's your academic progress overview.</p>
                         </motion.div>
                         <motion.div variants={itemVariants} className="mt-4 sm:mt-0 hidden md:block">
-                            <PdfDownloadButton studentId={student?.universityId} />
+                            <PdfDownloadButton studentId={user?.universityId} />
                         </motion.div>
                     </div>
                     {/* Mobile-only Progress Circle */}
@@ -199,7 +173,7 @@ const Dashboard = () => {
                     </motion.div>
 
                     <motion.div variants={itemVariants} className="mb-8 md:hidden">
-                        <PdfDownloadButton studentId={student?.universityId} />
+                        <PdfDownloadButton studentId={user?.universityId} />
                     </motion.div>
 
                     {/* Categories Preview Section */}

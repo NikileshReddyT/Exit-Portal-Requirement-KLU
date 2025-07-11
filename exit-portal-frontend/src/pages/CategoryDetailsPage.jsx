@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 import { FiArrowLeft, FiBook, FiCheckCircle } from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import Navbar from '../components/layout/Navbar';
@@ -30,12 +31,14 @@ const AvailableCourseCard = ({ course }) => (
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-gray-50 p-4 rounded-lg border border-gray-200/80 hover:bg-gray-100 hover:border-gray-300 transition-all duration-300 flex flex-col sm:flex-row gap-3 justify-center items-center relative"
+        className="bg-white p-3 rounded-lg border border-gray-300/80 hover:shadow-md hover:border-red-200 transition-all duration-300 flex items-center gap-4 cursor-pointer"
     >
-        <p className="font-bold text-brand-charcoal">{course.courseTitle}</p>
-        <div className="flex justify-between items-center mt-2">
-            <p className="text-sm text-gray-500 font-mono bg-gray-200 px-2 py-1 rounded">{course.courseCode}</p>
-            
+        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+            <FiBook className="text-red-600" />
+        </div>
+        <div className="flex-grow">
+            <p className="font-semibold text-brand-charcoal text-sm">{course.courseTitle}</p>
+            <p className="text-xs text-gray-500 font-mono mt-1">{course.courseCode}</p>
         </div>
     </motion.div>
 );
@@ -44,7 +47,8 @@ const CategoryDetailsPage = () => {
     const { categoryName } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-    const [student, setStudent] = useState(null);
+    const { user } = useAuth();
+
     const [completedCourses, setCompletedCourses] = useState([]);
     const [minRequiredCourses, setMinRequiredCourses] = useState(0);
     const [allCourses, setAllCourses] = useState([]);
@@ -52,8 +56,7 @@ const CategoryDetailsPage = () => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        const studentId = localStorage.getItem('studentId');
-        if (!studentId) {
+        if (!user) {
             navigate('/');
             return;
         }
@@ -66,13 +69,8 @@ const CategoryDetailsPage = () => {
             setLoading(true);
             const encodedCategoryName = encodeURIComponent(categoryName);
             try {
-                const studentRes = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: studentId });
-                if (studentRes.data && studentRes.data.length > 0) {
-                    setStudent({ name: studentRes.data[0].studentName, universityId: studentRes.data[0].universityId });
-                }
-
                 const [completedRes, allCoursesRes] = await Promise.all([
-                    axios.get(`${config.backendUrl}/api/v1/frontend/getcategorydetails/${encodedCategoryName}/${studentId}`),
+                    axios.get(`${config.backendUrl}/api/v1/frontend/getcategorydetails/${encodedCategoryName}/${user.universityId}`),
                     axios.get(`${config.backendUrl}/api/v1/frontend/getallcourses/${encodedCategoryName}`)
                 ]);
 
@@ -88,7 +86,7 @@ const CategoryDetailsPage = () => {
         };
 
         fetchData();
-    }, [categoryName, navigate, location.state]);
+    }, [categoryName, navigate, location.state, user]);
 
     const availableCourses = useMemo(() => {
         const completedCourseCodes = new Set(completedCourses.map(c => c.courseCode));
@@ -140,7 +138,7 @@ const CategoryDetailsPage = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
-            <Navbar student={student} />
+            <Navbar />
             <main className="p-4 sm:p-6 lg:p-8">
                 <div className="max-w-7xl mx-auto">
                     <button 
@@ -151,7 +149,7 @@ const CategoryDetailsPage = () => {
                         Back to Categories
                     </button>
 
-                    <h1 className="text-3xl font-extrabold text-brand-charcoal tracking-tight mb-8">{decodeURIComponent(categoryName)}</h1>
+                    <h1 className="text-3xl font-extrabold text-brand-charcoal tracking-tight">{decodeURIComponent(categoryName)}</h1>
 
                     {/* Summary Section */}
                     <motion.div 
@@ -217,7 +215,7 @@ const CategoryDetailsPage = () => {
                         <div className="lg:col-span-1">
                             <h2 className="text-2xl font-bold text-brand-charcoal mb-4">Available Courses</h2>
                             {availableCourses.length > 0 ? (
-                                <div className="space-y-4 bg-white p-4 rounded-lg shadow-sm">
+                                <div className="space-y-3 bg-gray-50/80 p-4 rounded-lg shadow-inner border border-gray-300">
                                     {availableCourses.map(course => (
                                         <AvailableCourseCard key={course.courseCode} course={course} />
                                     ))}

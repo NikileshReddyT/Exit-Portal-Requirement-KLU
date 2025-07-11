@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { motion } from 'framer-motion';
 import { FiSearch } from 'react-icons/fi';
-import config from '../config';
+
 
 import Navbar from '../components/layout/Navbar';
 import CategoryList from '../components/dashboard/CategoryList';
@@ -11,46 +12,12 @@ import CategoryList from '../components/dashboard/CategoryList';
 
 const Categories = () => {
   const navigate = useNavigate();
-  const [student, setStudent] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
+  const { user } = useAuth();
+  const { studentProgressData, loadingProgress, error } = useData();
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    const studentId = localStorage.getItem('studentId');
-    if (!studentId) {
-      navigate('/');
-      return;
-    }
-
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: studentId });
-        const data = response.data;
-
-        if (data && data.length > 0) {
-          setStudent({
-            name: data[0].studentName,
-            universityId: data[0].universityId,
-          });
-          setCategories(data);
-        } else {
-          setStudent({ name: 'Student', universityId: studentId });
-          setCategories([]);
-        }
-
-      } catch (err) {
-        setError('Failed to load categories. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [navigate]);
+  const loading = loadingProgress === 'pending';
+  const categories = studentProgressData || [];
 
   const handleNavigateToDetails = (categoryName) => {
     navigate(`/category/${encodeURIComponent(categoryName)}`);
@@ -86,7 +53,7 @@ const Categories = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
-      <Navbar student={student} />
+      <Navbar />
       <main className="p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>

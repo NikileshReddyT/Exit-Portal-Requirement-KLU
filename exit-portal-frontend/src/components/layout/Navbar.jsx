@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { FiLogOut, FiMenu, FiX, FiGrid } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { FiLogOut, FiMenu, FiX } from 'react-icons/fi';
+import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const Navbar = ({ student }) => {
-    const navigate = useNavigate();
+const Navbar = () => {
+    
+    const { user, logout } = useAuth();
+    
     const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        // If the user is not authenticated and not already on the login page, redirect them.
+        if (!user) {
+            navigate('/');
+        }
+    }, [user, navigate]);
 
     const handleLogout = () => {
-        localStorage.clear();
-        navigate('/');
+        logout();
     };
 
     const getInitials = (name) => {
@@ -35,11 +45,11 @@ const Navbar = ({ student }) => {
                     {/* Student Info */}
                     <div className="flex items-center gap-3">
                         <div className="h-12 w-12 rounded-full flex items-center justify-center text-white bg-red-900 font-bold border-2 border-white shadow-sm">
-                            <span className="text-white text-sm">{getInitials(student?.name)}</span>
+                            <span className="text-white text-sm">{getInitials(user?.name)}</span>
                         </div>
                         <div className="text-left">
-                            <p className="font-semibold text-md text-gray-800">{student?.name}</p>
-                            <p className="text-xs text-gray-500">{student?.universityId}</p>
+                            <p className="font-semibold text-md text-gray-800">{user?.name}</p>
+                            <p className="text-xs text-gray-500">{user?.universityId}</p>
                         </div>
                     </div>
                     
