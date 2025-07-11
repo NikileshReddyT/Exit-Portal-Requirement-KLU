@@ -85,6 +85,11 @@ public class FrontendService {
             return null;
         }
 
+        // Optimization: Fetch all grades for the student in one query to solve N+1 problem
+        List<StudentGrade> allStudentGrades = studentGradeRepository.findByUniversityId(universityId);
+        java.util.Map<String, List<StudentGrade>> gradesByCategory = allStudentGrades.stream()
+                .collect(java.util.stream.Collectors.groupingBy(StudentGrade::getCategory));
+
         StudentCourseReportDTO reportDTO = new StudentCourseReportDTO();
         reportDTO.setStudentId(universityId);
         reportDTO.setStudentName(categoryProgressList.get(0).getStudentName());
@@ -99,7 +104,8 @@ public class FrontendService {
             categoryDTO.setMinRequiredCourses(progress.getMinRequiredCourses());
             categoryDTO.setMinRequiredCredits(progress.getMinRequiredCredits());
 
-            List<StudentGrade> studentGrades = getCoursesByCategory(universityId, progress.getCategoryName());
+            // Optimization: Get grades from the map (no database call in the loop)
+            List<StudentGrade> studentGrades = gradesByCategory.getOrDefault(progress.getCategoryName(), new ArrayList<>());
             categoryDTO.setCourses(studentGrades);
 
             int completedCoursesCount = 0;
