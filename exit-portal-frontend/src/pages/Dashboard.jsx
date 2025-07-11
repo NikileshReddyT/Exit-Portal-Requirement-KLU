@@ -10,6 +10,8 @@ import { FiTrendingUp, FiAward, FiCheckCircle, FiXCircle, FiArrowRight, FiChevro
 import PdfDownloadButton from '../components/ui/PdfDownloadButton';
 import CategoryList from '../components/dashboard/CategoryList';
 import Summary, { ProgressCircle, SummaryCards } from '../components/dashboard/Summary';
+import { DashboardSkeleton } from '../components/skeletons/DashboardSkeleton';
+
 
 const Dashboard = () => {
     
@@ -23,6 +25,7 @@ const Dashboard = () => {
     const [isCategoriesOpen, setIsCategoriesOpen] = useState(true);
 
     const loading = loadingProgress === 'pending';
+    // const loading = true;
 
     const { summaryData, categories, noDataFound } = useMemo(() => {
         if (!studentProgressData || studentProgressData.length === 0) {
@@ -64,15 +67,8 @@ const Dashboard = () => {
     };
 
     if (loading) {
-        return (
-            <div className="flex items-center justify-center h-screen bg-gray-100">
-                <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full"
-                />
-            </div>
-        );
+        return <DashboardSkeleton />
+
     }
 
     if (noDataFound) {

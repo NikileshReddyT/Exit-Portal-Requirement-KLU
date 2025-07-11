@@ -8,6 +8,8 @@ import { FiSearch } from 'react-icons/fi';
 
 import Navbar from '../components/layout/Navbar';
 import CategoryList from '../components/dashboard/CategoryList';
+import { CategoriesSkeleton } from '../components/skeletons/CategoriesSkeleton';
+
 
 
 const Categories = () => {
@@ -17,6 +19,7 @@ const Categories = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const loading = loadingProgress === 'pending';
+  // const loading = true;
   const categories = studentProgressData || [];
 
   const handleNavigateToDetails = (categoryName) => {
@@ -28,15 +31,7 @@ const Categories = () => {
   );
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-brand-charcoal">
-        <motion.div 
-          animate={{ rotate: 360 }} 
-          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-16 h-16 border-4 border-brand-red border-t-transparent rounded-full"
-        />
-      </div>
-    );
+    return <CategoriesSkeleton />;
   }
 
   if (error) {

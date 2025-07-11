@@ -6,6 +6,8 @@ import { FiArrowLeft, FiBook, FiCheckCircle } from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import Navbar from '../components/layout/Navbar';
 import config from '../config';
+import { CategoryDetailsSkeleton } from '../components/skeletons/CategoryDetailsSkeleton';
+
 
 const CourseCard = ({ course }) => (
     <motion.div
@@ -54,7 +56,7 @@ const CategoryDetailsPage = () => {
     const [allCourses, setAllCourses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
+    
     useEffect(() => {
         if (!user) {
             navigate('/');
@@ -125,7 +127,7 @@ const CategoryDetailsPage = () => {
     }, [completedCourses]);
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="loader"></div></div>;
+        return <CategoryDetailsSkeleton />;
     }
 
     if (error) {
