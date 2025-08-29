@@ -9,24 +9,33 @@ import config from '../config';
 import { CategoryDetailsSkeleton } from '../components/skeletons/CategoryDetailsSkeleton';
 
 
-const CourseCard = ({ course }) => (
-    <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-3 items-start sm:items-center relative"
-    >
-        <div className="flex flex-col w-full pr-16">
-            <p className="font-bold text-brand-charcoal text-sm sm:text-base">{course.courseName}</p>
-            <p className="text-xs sm:text-sm text-gray-500 mt-1">{course.courseCode}</p>
-        </div>
-        <div className="absolute top-2 right-2">
-            <span className={`text-xs font-bold px-2 py-1 rounded-full ${course.grade === 'P' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-500'}`}>
-                Grade : {course.grade}
-            </span>
-        </div>
-    </motion.div>
-);
+const CourseCard = ({ course }) => {
+    const isPromoted = ((course.promotion || '').toUpperCase() === 'P');
+    const badgeClass = isPromoted
+        ? 'bg-green-100 text-green-700 border border-green-200'
+        : 'bg-red-100 text-red-700 border border-red-200';
+    const cardBorder = isPromoted ? 'border-green-200' : 'border-red-200';
+    const cardBg = isPromoted ? 'bg-white' : 'bg-rose-50';
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className={`p-4 rounded-lg shadow-sm border ${cardBorder} ${cardBg}`}
+        >
+            <div className="flex items-start justify-between gap-3 w-full">
+                <div className="min-w-0">
+                    <p className="font-bold text-brand-charcoal text-sm sm:text-base break-words">{course.courseName}</p>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-1 font-mono">{course.courseCode}</p>
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${badgeClass}`}>
+                    {isPromoted ? `Grade: ${course.grade ?? '-'}` : `Promotion: ${course.promotion ?? '-'}`}
+                </span>
+            </div>
+        </motion.div>
+    );
+};
 
 const AvailableCourseCard = ({ course }) => (
     <motion.div
@@ -90,14 +99,21 @@ const CategoryDetailsPage = () => {
         fetchData();
     }, [categoryName, navigate, location.state, user]);
 
+    // Courses that count towards progress (only those with promotion 'P')
+    const promotedCourses = useMemo(
+        () => completedCourses.filter(c => (c.promotion || '').toUpperCase() === 'P'),
+        [completedCourses]
+    );
+
     const availableCourses = useMemo(() => {
-        const completedCourseCodes = new Set(completedCourses.map(c => c.courseCode));
-        const completedCourseNames = new Set(completedCourses.map(c => c.courseName));
+        // Exclude only the courses that were promoted (passed). Non-'P' attempts remain available
+        const passedCodes = new Set(promotedCourses.map(c => c.courseCode));
+        const passedNames = new Set(promotedCourses.map(c => c.courseName));
         return allCourses.filter(course => 
-            !completedCourseCodes.has(course.courseCode) && 
-            !completedCourseNames.has(course.courseTitle)
+            !passedCodes.has(course.courseCode) && 
+            !passedNames.has(course.courseTitle)
         );
-    }, [completedCourses, allCourses]);
+    }, [promotedCourses, allCourses]);
 
     const sortedAndGroupedCourses = useMemo(() => {
         const semesterOrder = { 'Odd Sem': 1, 'Even Sem': 2, 'Summer Term': 3 };
@@ -134,9 +150,9 @@ const CategoryDetailsPage = () => {
         return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-red-500 font-semibold">{error}</div>;
     }
 
-    const completedCount = completedCourses.length;
-    const pendingCount = Math.max(0, minRequiredCourses - completedCount);
-    const progressPercentage = minRequiredCourses > 0 ? (completedCount / minRequiredCourses) * 100 : 0;
+    const promotedCount = promotedCourses.length;
+    const pendingCount = Math.max(0, minRequiredCourses - promotedCount);
+    const progressPercentage = minRequiredCourses > 0 ? (promotedCount / minRequiredCourses) * 100 : 0;
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
@@ -164,7 +180,7 @@ const CategoryDetailsPage = () => {
                             <div className="text-center md:text-left">
                                 <p className="text-gray-500 text-sm">Progress</p>
                                 <p className="text-3xl font-bold text-brand-charcoal">
-                                    {completedCount} / {minRequiredCourses} <span className="text-xl font-medium">Courses Completed</span>
+                                    {promotedCount} / {minRequiredCourses} <span className="text-xl font-medium">Courses Completed</span>
                                 </p>
                                 <p className="text-gray-500 text-sm mt-1">
                                     You need to complete {pendingCount} more courses in this category.
