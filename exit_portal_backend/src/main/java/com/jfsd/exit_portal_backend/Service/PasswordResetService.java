@@ -1,9 +1,9 @@
 package com.jfsd.exit_portal_backend.Service;
 
 import com.jfsd.exit_portal_backend.Model.PasswordResetToken;
-import com.jfsd.exit_portal_backend.Model.StudentCredentials;
+import com.jfsd.exit_portal_backend.Model.Student;
 import com.jfsd.exit_portal_backend.Repository.PasswordResetTokenRepository;
-import com.jfsd.exit_portal_backend.Repository.StudentCredentialsRepository;
+import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,7 +15,7 @@ import java.util.UUID;
 public class PasswordResetService {
 
     @Autowired
-    private StudentCredentialsRepository studentCredentialsRepository;
+    private StudentRepository studentRepository;
 
     @Autowired
     private PasswordResetTokenRepository tokenRepository;
@@ -27,7 +27,7 @@ public class PasswordResetService {
     private PasswordEncoder passwordEncoder;
 
     public void createPasswordResetTokenForUser(String universityId) {
-        StudentCredentials student = studentCredentialsRepository.findByStudentId(universityId)
+        Student student = studentRepository.findByStudentId(universityId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         PasswordResetToken myToken = tokenRepository.findByStudent(student);
@@ -53,10 +53,10 @@ public class PasswordResetService {
 
     public void resetPassword(String token, String newPassword) {
         PasswordResetToken passToken = tokenRepository.findByToken(token);
-        StudentCredentials student = passToken.getStudent();
+        Student student = passToken.getStudent();
         String hashedPassword = passwordEncoder.encode(newPassword);
         student.setPassword(hashedPassword);
-        studentCredentialsRepository.save(student);
+        studentRepository.save(student);
         tokenRepository.delete(passToken);
     }
 

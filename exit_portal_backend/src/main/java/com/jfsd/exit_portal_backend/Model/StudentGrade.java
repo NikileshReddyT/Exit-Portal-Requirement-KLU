@@ -9,18 +9,15 @@ public class StudentGrade {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long sno;
     
-    @Column(name = "university_id")
-    private String universityId;
+    // Use same column name 'university_id' but reference students.student_id
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "university_id", referencedColumnName = "student_id")
+    private Student student;
     
-    @Column(name = "student_name")
-    private String studentName;
-    
-    private String status;
-    
-    @Column(name = "course_code")
+    @Transient
     private String courseCode;
     
-    @Column(name = "course_name")
+    @Transient
     private String courseName;
     
     private String grade;
@@ -28,11 +25,12 @@ public class StudentGrade {
     @Column(name = "grade_point")
     private Double gradePoint;
     
+    @Transient
     private Double credits;
     
     private String promotion;
     
-    @Column(nullable = false)
+    @Column(name = "category")
     private String category;
     
     @Column(name = "academic_year")
@@ -41,23 +39,33 @@ public class StudentGrade {
     @Column(name = "semester")
     private String semester;
 
+    @ManyToOne
+    @JoinColumn(name = "course_id", nullable = true)
+    private Courses course;
+
     // Getters and Setters
     public Long getSno() { return sno; }
     public void setSno(Long sno) { this.sno = sno; }
 
-    public String getUniversityId() { return universityId; }
-    public void setUniversityId(String universityId) { this.universityId = universityId; }
+    public Student getStudent() { return student; }
+    public void setStudent(Student student) { this.student = student; }
 
-    public String getStudentName() { return studentName; }
-    public void setStudentName(String studentName) { this.studentName = studentName; }
+    
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-
-    public String getCourseCode() { return courseCode; }
+    public String getCourseCode() {
+        if (course != null) {
+            return course.getCourseCode();
+        }
+        return courseCode;
+    }
     public void setCourseCode(String courseCode) { this.courseCode = courseCode; }
 
-    public String getCourseName() { return courseName; }
+    public String getCourseName() {
+        if (course != null) {
+            return course.getCourseTitle();
+        }
+        return courseName;
+    }
     public void setCourseName(String courseName) { this.courseName = courseName; }
 
     public String getGrade() { return grade; }
@@ -66,13 +74,20 @@ public class StudentGrade {
     public Double getGradePoint() { return gradePoint; }
     public void setGradePoint(Double gradePoint) { this.gradePoint = gradePoint; }
 
-    public Double getCredits() { return credits; }
+    public Double getCredits() {
+        if (course != null) {
+            return course.getCourseCredits();
+        }
+        return credits;
+    }
     public void setCredits(Double credits) { this.credits = credits; }
 
     public String getPromotion() { return promotion; }
     public void setPromotion(String promotion) { this.promotion = promotion; }
 
-    public String getCategory() { return category; }
+    public String getCategory() {
+        return category;
+    }
     public void setCategory(String category) { this.category = category; }
 
     public String getYear() { return year; }
@@ -80,4 +95,7 @@ public class StudentGrade {
 
     public String getSemester() { return semester; }
     public void setSemester(String semester) { this.semester = semester; }
+
+    public Courses getCourse() { return course; }
+    public void setCourse(Courses course) { this.course = course; }
 }
