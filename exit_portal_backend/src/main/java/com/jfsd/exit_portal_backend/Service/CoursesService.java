@@ -61,14 +61,9 @@ public class CoursesService {
                     String courseCode = values[0].trim();
                     Optional<Courses> existingCourseOpt = coursesRepository.findFirstByCourseCode(courseCode);
 
-                    Courses course;
-                    if (existingCourseOpt.isPresent()) {
-                        course = existingCourseOpt.get();
-                        updatedRecords.incrementAndGet();
-                    } else {
-                        course = new Courses();
+                    Courses course = existingCourseOpt.orElseGet(Courses::new);
+                    if (!existingCourseOpt.isPresent()) {
                         course.setCourseCode(courseCode);
-                        createdRecords.incrementAndGet();
                     }
 
                     course.setCourseTitle(values[1].trim().replace("\"", ""));
@@ -78,7 +73,15 @@ public class CoursesService {
                         messages.add("Skipping row " + rowNumber + ": Invalid credit value for course " + courseCode + ".");
                         return null;
                     }
-                    course.setCategory(values[3].trim());
+
+                    // Note: Category relationship is now handled by ProgramCourseCategory
+                    // This service now only handles global course data (code, title, credits)
+
+                    if (existingCourseOpt.isPresent()) {
+                        updatedRecords.incrementAndGet();
+                    } else {
+                        createdRecords.incrementAndGet();
+                    }
 
                     return course;
                 })

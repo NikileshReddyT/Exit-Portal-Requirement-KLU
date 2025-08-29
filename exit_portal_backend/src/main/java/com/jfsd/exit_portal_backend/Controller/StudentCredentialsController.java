@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.jfsd.exit_portal_backend.Model.StudentCredentials;
+import com.jfsd.exit_portal_backend.Model.Student;
 import com.jfsd.exit_portal_backend.Service.StudentCredentialsService;
 
 @RestController
@@ -22,12 +22,12 @@ public class StudentCredentialsController {
 
     // Endpoint to generate credentials
     @GetMapping("/generate")
-    public List<StudentCredentials> generateCredentials() {
+    public List<Student> generateCredentials() {
         return studentCredentialsService.generateAndSaveUniqueStudentCredentials();
     }
 
     @GetMapping("/get")
-    public List<StudentCredentials> getCredentials() {
+    public List<Student> getCredentials() {
         return studentCredentialsService.getStudentCredentials();
     }
 

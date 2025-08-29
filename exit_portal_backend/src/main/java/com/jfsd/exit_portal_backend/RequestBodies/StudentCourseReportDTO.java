@@ -7,8 +7,8 @@ public class StudentCourseReportDTO {
     private String studentId;
     private String studentName;
     private List<CategoryCoursesDTO> categories;
-    private int totalRegisteredCourses;
-    private double totalRegisteredCredits;
+    private int totalCompletedCourses;
+    private double totalCompletedCredits;
 
     // Constructors
     public StudentCourseReportDTO() {}
@@ -38,19 +38,19 @@ public class StudentCourseReportDTO {
         this.categories = categories;
     }
 
-    public int getTotalRegisteredCourses() {
-        return totalRegisteredCourses;
+    public int getTotalCompletedCourses() {
+        return totalCompletedCourses;
     }
 
-    public void setTotalRegisteredCourses(int totalRegisteredCourses) {
-        this.totalRegisteredCourses = totalRegisteredCourses;
+    public void setTotalCompletedCourses(int totalCompletedCourses) {
+        this.totalCompletedCourses = totalCompletedCourses;
     }
 
-    public double getTotalRegisteredCredits() {
-        return totalRegisteredCredits;
+    public double getTotalCompletedCredits() {
+        return totalCompletedCredits;
     }
 
-    public void setTotalRegisteredCredits(double totalRegisteredCredits) {
-        this.totalRegisteredCredits = totalRegisteredCredits;
+    public void setTotalCompletedCredits(double totalCompletedCredits) {
+        this.totalCompletedCredits = totalCompletedCredits;
     }
 }

@@ -8,12 +8,11 @@ import com.jfsd.exit_portal_backend.Model.StudentGrade;
 public class CategoryCoursesDTO {
     private String categoryName;
     private int minRequiredCourses;
-    private int registeredCourses;
     private double minRequiredCredits;
-    private double registeredCredits;
     private int completedCourses;
     private double completedCredits;
     private List<StudentGrade> courses;
+    private List<incompleteCategoryCourses> incompleteCourses;
 
     // Constructors
     public CategoryCoursesDTO() {}
@@ -35,28 +34,12 @@ public class CategoryCoursesDTO {
         this.minRequiredCourses = minRequiredCourses;
     }
 
-    public int getRegisteredCourses() {
-        return registeredCourses;
-    }
-
-    public void setRegisteredCourses(int registeredCourses) {
-        this.registeredCourses = registeredCourses;
-    }
-
     public double getMinRequiredCredits() {
         return minRequiredCredits;
     }
 
     public void setMinRequiredCredits(double minRequiredCredits) {
         this.minRequiredCredits = minRequiredCredits;
-    }
-
-    public double getRegisteredCredits() {
-        return registeredCredits;
-    }
-
-    public void setRegisteredCredits(double registeredCredits) {
-        this.registeredCredits = registeredCredits;
     }
 
     public int getCompletedCourses() {
@@ -81,5 +64,13 @@ public class CategoryCoursesDTO {
 
     public void setCourses(List<StudentGrade> courses) {
         this.courses = courses;
+    }
+
+    public List<incompleteCategoryCourses> getIncompleteCourses() {
+        return incompleteCourses;
+    }
+
+    public void setIncompleteCourses(List<incompleteCategoryCourses> incompleteCourses) {
+        this.incompleteCourses = incompleteCourses;
     }
 }

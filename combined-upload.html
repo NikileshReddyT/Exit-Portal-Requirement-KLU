@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Combined Categories + Courses Upload</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background:#0f172a; color:#e2e8f0; }
+    .container { max-width: 720px; margin: 48px auto; padding: 24px; background:#111827; border-radius: 14px; border:1px solid #1f2937; }
+    h1 { margin-top: 0; font-size: 28px; }
+    p { color:#94a3b8; }
+    .card { padding: 18px; background:#0b1220; border:1px solid #1f2937; border-radius: 12px; }
+    .actions { margin-top: 16px; display:flex; gap:12px; align-items:center; }
+    input[type="file"], input[type="number"] { color:#e2e8f0; }
+    label { display:block; margin-top:8px; margin-bottom:4px; color:#cbd5e1; }
+    button { background:#2563eb; color:white; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; }
+    a { color:#93c5fd; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .small { color:#9ca3af; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Combined Categories + Courses Upload</h1>
+    <p class="small">POST → http://localhost:8080/api/combined/upload?programCode=BT-CS</p>
+
+    <div class="card">
+      <form action="http://localhost:8080/api/combined/upload" method="post" enctype="multipart/form-data">
+        <label for="file">CSV File</label>
+        <input id="file" type="file" name="file" accept=".csv" required />
+
+        <label for="programCode">Program</label>
+        <select id="programCode" name="programCode" required>
+          <option value="">Loading programs...</option>
+        </select>
+
+        <label for="defaultCredits">Default Credits (optional)</label>
+        <input id="defaultCredits" name="defaultCredits" type="number" step="0.1" min="0" placeholder="e.g., 3" />
+
+        <div class="actions">
+          <button type="submit">Upload Combined CSV</button>
+          <a href="./index.html">Back to Home</a>
+        </div>
+      </form>
+    </div>
+
+    <p class="small" style="margin-top:14px;">Expected columns per row: Sl No, Category, Min Courses, Min Credits, Course Code, Course Title, Credits</p>
+
+    <div id="result" class="card" style="margin-top:16px; display:none;"></div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.querySelector('form');
+      const fileInput = document.getElementById('file');
+      const programCodeInput = document.getElementById('programCode');
+      const defaultCreditsInput = document.getElementById('defaultCredits');
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const result = document.getElementById('result');
+      const originalBtnText = submitBtn.textContent;
+
+      const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+
+      // Load programs for dropdown
+      (async function loadPrograms() {
+        try {
+          const res = await fetch('http://localhost:8080/api/programs');
+          const programs = await res.json();
+          if (Array.isArray(programs) && programs.length) {
+            programCodeInput.innerHTML = '<option value="">Select program</option>' +
+              programs.map(p => '<option value="' + escapeHtml(p.code) + '">' + escapeHtml(p.code + ' — ' + p.name) + '</option>').join('');
+          } else {
+            programCodeInput.innerHTML = '<option value="">No programs found</option>';
+          }
+        } catch (e) {
+          programCodeInput.innerHTML = '<option value="">Failed to load programs</option>';
+        }
+      })();
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!fileInput.files.length) return;
+
+        result.style.display = 'block';
+        result.innerHTML = '<span class="small">Uploading...</span>';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Uploading...';
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        const pc = (programCodeInput.value || '').trim();
+        if (defaultCreditsInput.value !== '') {
+          formData.append('defaultCredits', defaultCreditsInput.value);
+        }
+
+        try {
+          let url = form.action;
+          if (pc) {
+            url += (url.includes('?') ? '&' : '?') + 'programCode=' + encodeURIComponent(pc);
+          }
+          const res = await fetch(url, { method: 'POST', body: formData });
+          const text = await res.text();
+          let data;
+          try { data = JSON.parse(text); } catch { data = text; }
+
+          const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+
+          if (Array.isArray(data)) {
+            result.innerHTML = '<strong>Response (' + res.status + ')</strong><ul>' + data.map(m => '<li>' + escapeHtml(m) + '</li>').join('') + '</ul>';
+          } else {
+            result.innerHTML = '<strong>Response (' + res.status + ')</strong><pre style="white-space:pre-wrap;">' + escapeHtml(text) + '</pre>';
+          }
+        } catch (err) {
+          const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+          result.innerHTML = '<strong>Error</strong><pre style="white-space:pre-wrap;">' + escapeHtml(err) + '</pre>';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalBtnText;
+        }
+      });
+    });
+  </script>
+</body>
+</html>

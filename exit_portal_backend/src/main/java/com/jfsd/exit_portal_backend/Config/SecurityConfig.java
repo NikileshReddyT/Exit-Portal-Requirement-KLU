@@ -28,7 +28,21 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/frontend/**", "/api/v1/password/**", "/api/credentials/populate", "/api/students/populate", "/api/courses/populate", "/api/grades/upload", "/api/categories/populate").permitAll()
+                        .requestMatchers(
+                                "/api/v1/frontend/**",
+                                "/api/v1/password/**",
+                                "/api/credentials/populate",
+                                "/api/students/populate",
+                                "/api/courses/upload",
+                                "/api/grades/upload",
+                                "/api/grades/results-upload",
+                                "/api/grades/registrations-upload",
+                                "/api/grades/backfill-categories",
+                                "/api/categories/populate",
+                                "/api/combined/upload",
+                                "/api/programs",
+                                "/api/programs/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 );
         return http.build();
@@ -37,9 +51,14 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://127.0.0.1:5501","https://exitportal-klu.vercel.app"));
-        configuration.setAllowedMethods(Arrays.asList("GET","POST", "PUT", "DELETE"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        configuration.setAllowedOrigins(Arrays.asList(
+                "http://localhost:5173",
+                "http://localhost:5500",
+                "http://127.0.0.1:5500",
+                "https://exitportal-klu.vercel.app"
+        ));
+        configuration.setAllowedMethods(Arrays.asList("GET","POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

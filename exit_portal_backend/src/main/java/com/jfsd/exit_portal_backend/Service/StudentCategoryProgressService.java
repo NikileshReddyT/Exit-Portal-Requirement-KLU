@@ -1,20 +1,24 @@
+// moved ProgramCategoryRequirementRepository injection into class body
 package com.jfsd.exit_portal_backend.Service;
 
 import com.jfsd.exit_portal_backend.Model.*;
 import com.jfsd.exit_portal_backend.Repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 public class StudentCategoryProgressService {
 
+    private static final Logger log = LoggerFactory.getLogger(StudentCategoryProgressService.class);
     @Autowired
     private StudentCategoryProgressRepository progressRepository;
     
@@ -22,10 +26,11 @@ public class StudentCategoryProgressService {
     private StudentGradeRepository studentGradeRepository;
     
     @Autowired
-    private CategoriesRepository categoriesRepository;
+    private ProgramCategoryRequirementRepository programCategoryRequirementRepository;
+    
+    // categoriesRepository no longer needed after SQL rewrite
 
-    @Autowired
-    private CoursesRepository coursesRepository;
+    // Removed unused CoursesRepository to avoid lint warning and keep the service minimal
 
     @Transactional
     public void calculateAndUpdateProgressForStudents(Set<String> universityIds) {
@@ -33,58 +38,24 @@ public class StudentCategoryProgressService {
             return;
         }
 
-        // Fetch all necessary data in bulk to avoid multiple database calls
-        List<StudentGrade> relevantGrades = studentGradeRepository.findByUniversityIdIn(universityIds);
-        List<Categories> allCategories = categoriesRepository.findAll();
-        Map<String, List<Courses>> coursesByCategory = coursesRepository.findAll().stream()
-                .collect(Collectors.groupingBy(Courses::getCategory));
+        long tStart = System.currentTimeMillis();
+        log.info("Recompute(SQL): start for {} students", universityIds.size());
 
-        Map<String, List<StudentGrade>> gradesByStudent = relevantGrades.stream()
-                .collect(Collectors.groupingBy(StudentGrade::getUniversityId));
+        // Phase 1: delete existing
+        long tDelStart = System.currentTimeMillis();
+        progressRepository.deleteByUniversityIdIn(universityIds);
+        long tDelEnd = System.currentTimeMillis();
+        log.info("Recompute(SQL): deleted existing progress for {} students in {} ms", universityIds.size(), (tDelEnd - tDelStart));
 
-        // Process each student
-        for (String universityId : universityIds) {
-            List<StudentGrade> studentGrades = gradesByStudent.getOrDefault(universityId, Collections.emptyList());
+        // Phase 2: single INSERT ... SELECT to rebuild all rows
+        long tInsStart = System.currentTimeMillis();
+        progressRepository.insertProgressForUniversityIds(universityIds);
+        long tInsEnd = System.currentTimeMillis();
+        log.info("Recompute(SQL): inserted progress rows in {} ms", (tInsEnd - tInsStart));
 
-            // Delete existing progress records for the student to ensure a clean slate
-            progressRepository.deleteByUniversityId(universityId);
-
-            if (studentGrades.isEmpty()) {
-                continue; // No grades for this student, so no progress to calculate
-            }
-
-            String studentName = studentGrades.get(0).getStudentName();
-
-            // Process each category for the student
-            for (Categories category : allCategories) {
-                List<Courses> categoryCourses = coursesByCategory.getOrDefault(category.getCategoryName(), Collections.emptyList());
-                Set<String> categoryCourseCodes = categoryCourses.stream()
-                        .map(Courses::getCourseCode)
-                        .collect(Collectors.toSet());
-
-                List<StudentGrade> completedCourses = studentGrades.stream()
-                        .filter(grade -> categoryCourseCodes.contains(grade.getCourseCode()))
-                        .filter(grade -> "P".equals(grade.getPromotion()))
-                        .collect(Collectors.toList());
-
-                int completedCourseCount = completedCourses.size();
-                double completedCreditsSum = completedCourses.stream()
-                        .mapToDouble(StudentGrade::getCredits)
-                        .sum();
-
-                StudentCategoryProgress progress = new StudentCategoryProgress(
-                    universityId,
-                    studentName,
-                    category.getCategoryName(),
-                    category.getMinCredits(),
-                    category.getMinCourses(),
-                    completedCourseCount,
-                    completedCreditsSum
-                );
-
-                progressRepository.save(progress);
-            }
-        }
+        long tEnd = System.currentTimeMillis();
+        log.info("Recompute(SQL): completed for {} students in {} ms (delete:{}ms, insert:{}ms)",
+                universityIds.size(), (tEnd - tStart), (tDelEnd - tDelStart), (tInsEnd - tInsStart));
     }
 
     @Transactional
@@ -97,10 +68,62 @@ public class StudentCategoryProgressService {
     
     
     public List<StudentCategoryProgress> getStudentProgress(String universityId) {
-        return progressRepository.findByUniversityId(universityId);
+        List<StudentCategoryProgress> rows = progressRepository.findByUniversityId(universityId);
+        enrichWithMinimumsGroupedByProgram(rows);
+        return rows;
     }
 
     public List<StudentCategoryProgress> getAllProgress() {
-        return progressRepository.findAll();
+        List<StudentCategoryProgress> rows = progressRepository.findAll();
+        enrichWithMinimumsGroupedByProgram(rows);
+        return rows;
+    }
+
+    @Transactional
+    public void calculateAndUpdateProgressForProgram(String programCode) {
+        // Fetch all unique student IDs for the specific program and delegate
+        Set<String> programStudentIds = studentGradeRepository.findStudentIdsByProgramCode(programCode).stream().collect(Collectors.toSet());
+        calculateAndUpdateProgressForStudents(programStudentIds);
+    }
+    
+    public List<StudentCategoryProgress> getStudentProgressForProgram(String universityId, String programCode) {
+        List<StudentCategoryProgress> rows = progressRepository.findByUniversityIdAndProgramCode(universityId, programCode);
+        enrichWithMinimumsForProgram(rows, programCode);
+        return rows;
+    }
+
+    public List<StudentCategoryProgress> getAllProgressForProgram(String programCode) {
+        List<StudentCategoryProgress> rows = progressRepository.findByProgramCode(programCode);
+        enrichWithMinimumsForProgram(rows, programCode);
+        return rows;
+    }
+
+    // Helper: group rows by program code and enrich from ProgramCategoryRequirement
+    private void enrichWithMinimumsGroupedByProgram(List<StudentCategoryProgress> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        Map<String, List<StudentCategoryProgress>> byProgram = rows.stream()
+                .collect(Collectors.groupingBy(scp -> scp.getProgram() != null ? scp.getProgram().getCode() : null));
+        for (Map.Entry<String, List<StudentCategoryProgress>> e : byProgram.entrySet()) {
+            String programCode = e.getKey();
+            if (programCode == null) continue; // cannot derive minimums without program
+            enrichWithMinimumsForProgram(e.getValue(), programCode);
+        }
+    }
+
+    // Helper: load all PCR for a program once and apply to matching category names
+    private void enrichWithMinimumsForProgram(List<StudentCategoryProgress> rows, String programCode) {
+        if (rows == null || rows.isEmpty() || programCode == null) return;
+        List<ProgramCategoryRequirement> reqs = programCategoryRequirementRepository.findByProgramCode(programCode);
+        Map<String, ProgramCategoryRequirement> reqByCategoryName = reqs.stream()
+                .filter(r -> r.getCategory() != null && r.getCategory().getCategoryName() != null)
+                .collect(Collectors.toMap(r -> r.getCategory().getCategoryName(), Function.identity(), (a,b)->a));
+        for (StudentCategoryProgress scp : rows) {
+            String catName = scp.getCategoryName();
+            ProgramCategoryRequirement r = reqByCategoryName.get(catName);
+            if (r != null) {
+                scp.setMinRequiredCourses(r.getMinCourses());
+                scp.setMinRequiredCredits(r.getMinCredits());
+            }
+        }
     }
 }
