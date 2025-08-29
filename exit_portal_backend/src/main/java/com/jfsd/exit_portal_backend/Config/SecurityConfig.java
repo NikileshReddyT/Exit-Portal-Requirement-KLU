@@ -29,6 +29,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                "/", // allow TestController root endpoint without auth
                                 "/api/v1/frontend/**",
                                 "/api/v1/password/**",
                                 "/api/credentials/populate",
