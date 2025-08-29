@@ -6,6 +6,7 @@ import { motion, AnimatePresence, scale } from 'framer-motion';
 import { FiUser, FiLock, FiLogIn, FiLoader, FiAlertTriangle, FiArrowRight } from 'react-icons/fi';
 import config from '../config';
 import bg from '../images/home.png'
+import { Button } from '@/components/ui/button';
 
 const Login = () => {
     const [id, setId] = useState('');
@@ -99,15 +100,15 @@ const Login = () => {
             <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8">
                 <motion.div 
                     variants={formVariants}
-                    className="w-full max-w-md h-full lg:h-auto"
+                    className="w-full max-w-md h-full lg:h-auto flex flex-col justify-center"
                 >
-                    <div className="text-center lg:hidden mb-10">
+                    <div className="text-center md:hidden mb-10 ">
                         <Link to="/"><h1 className="text-2xl sm:text-3xl font-black text-brand-charcoal tracking-wider">Exit Requirement Portal</h1></Link>
                         <p className="text-gray-500 mt-2">Unlock Your Academic Journey.</p>
                     </div>
 
                     {/* Glassmorphism Card for Mobile, Seamless for Desktop */}
-                    <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/30 lg:bg-transparent lg:backdrop-blur-none lg:shadow-none lg:p-0 lg:border-none">
+                    <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-2xl p-8 border border-white/30 md:bg-transparent md:backdrop-blur-none md:shadow-none md:p-0 md:border-none">
                         <motion.h2 variants={formVariants} className="text-xl font-bold text-brand-charcoal text-center  lg:text-3xl mb-2">Sign In</motion.h2>
                         <motion.p variants={formVariants} className="text-gray-600 text-center  lg:text-base mb-10">Enter your credentials to access your account.</motion.p>
 
@@ -167,10 +168,10 @@ const Login = () => {
                             </AnimatePresence>
 
                             <motion.div variants={formVariants}>
-                                <button
+                                <Button
                                     type="submit"
                                     disabled={loading}
-                                    className="w-full group flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 to-red-800 text-white font-bold py-3.5 px-4 rounded-xl hover:from-red-700 hover:to-red-900 focus:outline-none focus:ring-4 focus:ring-red-300 transition-all duration-300 transform hover:-translate-y-1 disabled:from-red-400 disabled:to-red-500 disabled:cursor-not-allowed disabled:transform-none shadow-2xl hover:shadow-red-500/50"
+                                    className="w-full group flex items-center justify-center gap-3 text-white font-bold py-6 px-6 hover:-translate-y-1 disabled:bg-red-300 disabled:cursor-not-allowed disabled:transform-none "
                                 >
                                     {loading ? (
                                         <>
@@ -183,7 +184,7 @@ const Login = () => {
                                             <FiArrowRight className="transition-transform duration-300 group-hover:translate-x-1.5" />
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </motion.div>
                         </form>
                     </div>

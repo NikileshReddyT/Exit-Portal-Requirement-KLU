@@ -30,25 +30,29 @@ export const AuthProvider = ({ children }) => {
                 universityId: credentials.universityId,
                 password: credentials.password
             });
+            
+            console.log(loginResponse.data);
 
-            if (loginResponse.data && loginResponse.data.universityid) {
+            if (loginResponse.data && loginResponse.data.universityid && loginResponse.data.studentName) {
                 const universityId = loginResponse.data.universityid;
-                console.log(`[AuthContext] Login successful for universityId: ${universityId}`);
+                const name = loginResponse.data.studentName;
+                // console.log(`[AuthContext] Login successful for universityId: ${universityId}`);
 
-                // Step 2: Fetch student data to get the name
-                console.log('[AuthContext] Fetching student details...');
-                const dataResponse = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: universityId });
+                // // Step 2: Fetch student data to get the name
+                // console.log('[AuthContext] Fetching student details...');
+                // const dataResponse = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: universityId });
 
-                let studentName = null;
-                if (dataResponse.data && dataResponse.data.length > 0) {
-                    studentName = dataResponse.data[0].studentName;
-                    console.log(`[AuthContext] Found student name: "${studentName}"`);
-                }
+                // let studentName = null;
+                // if (dataResponse.data && dataResponse.data.length > 0) {
+                //     studentName = dataResponse.data[0].studentName;
+                //     console.log(`[AuthContext] Found student name: "${studentName}"`);
+                // }
 
                 // Step 3: Create a complete user object and update the state
-                const userData = { universityId, name: studentName };
+                const userData = { universityId, name };
                 console.log('[AuthContext] Setting complete user object:', userData);
                 
+
                 setUser(userData);
                 setIsAuthenticated(true);
                 localStorage.setItem('user', JSON.stringify(userData));

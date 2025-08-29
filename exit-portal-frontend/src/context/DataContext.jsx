@@ -26,19 +26,13 @@ export const DataProvider = ({ children }) => {
         setLoadingProgress('pending');
         try {
             const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: user.universityId });
+            response.data.reverse();
             console.log('[DataContext] Received student progress data:', response.data);
             
             setStudentProgressData(response.data);
             setLoadingProgress('succeeded');
 
-            // Enrich the user object in AuthContext with the student's name
-            if (response.data && response.data.length > 0) {
-                const studentName = response.data[0].studentName;
-                console.log(`[DataContext] Found student name: "${studentName}". Calling updateUser.`);
-                updateUser({ name: studentName });
-            } else {
-                console.log('[DataContext] No student data in response to extract name from.');
-            }
+        
         } catch (err) {
             console.error('[DataContext] Error fetching student data:', err);
             setError('Failed to load student data.');
