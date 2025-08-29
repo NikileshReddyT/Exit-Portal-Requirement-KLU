@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { FiArrowLeft, FiBook, FiCheckCircle } from 'react-icons/fi';
+import { FiBook, FiCheckCircle } from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import Navbar from '../components/layout/Navbar';
+import Breadcrumbs from '../components/ui/Breadcrumbs';
 import config from '../config';
 import { CategoryDetailsSkeleton } from '../components/skeletons/CategoryDetailsSkeleton';
 
@@ -159,27 +160,34 @@ const CategoryDetailsPage = () => {
             <Navbar />
             <main className="p-4 sm:p-6 lg:p-8">
                 <div className="max-w-7xl mx-auto">
-                    <button 
-                        onClick={() => navigate('/categories')}
-                        className="flex items-center gap-2 text-brand-charcoal hover:text-brand-red font-semibold mb-6 transition-colors duration-300"
-                    >
-                        <FiArrowLeft />
-                        Back to Categories
-                    </button>
+                    <div className="mb-4 sm:mb-6">
+                        <Breadcrumbs
+                            items={[
+                                { label: 'Dashboard', to: '/dashboard' },
+                                { label: 'Categories', to: '/categories' },
+                                { label: decodeURIComponent(categoryName) }
+                            ]}
+                        />
+                    </div>
 
-                    <h1 className="text-3xl font-extrabold text-brand-charcoal tracking-tight">{decodeURIComponent(categoryName)}</h1>
+                    <h1
+                        className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal tracking-tight leading-snug break-words"
+                        title={decodeURIComponent(categoryName)}
+                    >
+                        {decodeURIComponent(categoryName)}
+                    </h1>
 
                     {/* Summary Section */}
                     <motion.div 
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.5 }}
-                        className="bg-white p-6 rounded-2xl shadow-sm mb-8"
+                        className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm mb-6 sm:mb-8"
                     >
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6">
                             <div className="text-center md:text-left">
                                 <p className="text-gray-500 text-sm">Progress</p>
-                                <p className="text-3xl font-bold text-brand-charcoal">
+                                <p className="text-2xl sm:text-3xl font-bold text-brand-charcoal">
                                     {promotedCount} / {minRequiredCourses} <span className="text-xl font-medium">Courses Completed</span>
                                 </p>
                                 <p className="text-gray-500 text-sm mt-1">
@@ -200,11 +208,11 @@ const CategoryDetailsPage = () => {
                     </motion.div>
 
                     {/* Main Content Grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
                         
                         {/* Completed Courses Section */}
                         <div className="lg:col-span-2">
-                            <h2 className="text-2xl font-bold text-brand-charcoal mb-4">Completed Courses</h2>
+                            <h2 className="text-xl sm:text-2xl font-bold text-brand-charcoal mb-3 sm:mb-4">Completed Courses</h2>
                             {Object.keys(sortedAndGroupedCourses).length > 0 ? (
                                  <div className="space-y-8">
                                 {Object.entries(sortedAndGroupedCourses).map(([year, courses]) => (
@@ -231,7 +239,7 @@ const CategoryDetailsPage = () => {
 
                         {/* Available Courses Section */}
                         <div className="lg:col-span-1">
-                            <h2 className="text-2xl font-bold text-brand-charcoal mb-4">Available Courses</h2>
+                            <h2 className="text-xl sm:text-2xl font-bold text-brand-charcoal mb-3 sm:mb-4">Available Courses</h2>
                             {availableCourses.length > 0 ? (
                                 <div className="space-y-3 bg-gray-50/80 p-4 rounded-lg shadow-inner border border-gray-300">
                                     {availableCourses.map(course => (
