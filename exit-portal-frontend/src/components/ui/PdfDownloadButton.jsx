@@ -4,7 +4,7 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import config from "../../config";
 import { FiDownload, FiLoader } from 'react-icons/fi';
-import { Button } from "./button";
+
 
 const PdfDownloadButton = ({ studentId }) => {
   const [loading, setLoading] = useState(false);
@@ -243,7 +243,7 @@ const PdfDownloadButton = ({ studentId }) => {
 
   return (
     <div className="flex justify-center mt-6">
-      <Button
+      <button
         onClick={generatePDF}
         disabled={loading || !reportData}
         className="bg-red-800 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transform hover:scale-105 shadow-md hover:shadow-lg"
@@ -252,7 +252,7 @@ const PdfDownloadButton = ({ studentId }) => {
           ? <><FiLoader className="animate-spin" /> Loading Report...</>
           : <><FiDownload /> Download PDF</>
         }
-      </Button>
+      </button>
     </div>
   );
 };

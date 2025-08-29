@@ -6,7 +6,7 @@ import { motion, AnimatePresence, scale } from 'framer-motion';
 import { FiUser, FiLock, FiLogIn, FiLoader, FiAlertTriangle, FiArrowRight } from 'react-icons/fi';
 import config from '../config';
 import bg from '../images/home.png'
-import { Button } from '@/components/ui/button';
+
 
 const Login = () => {
     const [id, setId] = useState('');
@@ -168,7 +168,7 @@ const Login = () => {
                             </AnimatePresence>
 
                             <motion.div variants={formVariants}>
-                                <Button
+                                <button
                                     type="submit"
                                     disabled={loading}
                                     className="w-full group flex items-center justify-center gap-3 text-white font-bold py-6 px-6 hover:-translate-y-1 disabled:bg-red-300 disabled:cursor-not-allowed disabled:transform-none "
@@ -184,7 +184,7 @@ const Login = () => {
                                             <FiArrowRight className="transition-transform duration-300 group-hover:translate-x-1.5" />
                                         </>
                                     )}
-                                </Button>
+                                </button>
                             </motion.div>
                         </form>
                     </div>
