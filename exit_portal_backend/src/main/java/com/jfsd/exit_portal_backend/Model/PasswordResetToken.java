@@ -7,14 +7,14 @@ import java.util.Date;
 public class PasswordResetToken {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String token;
 
-    @OneToOne(targetEntity = StudentCredentials.class, fetch = FetchType.EAGER)
-    @JoinColumn(nullable = false, name = "student_credentials_id")
-    private StudentCredentials student;
+    @OneToOne(fetch = FetchType.EAGER)
+    @JoinColumn(nullable = false, name = "student_id")
+    private Student student;
 
     private Date expiryDate;
 
@@ -26,7 +26,7 @@ public class PasswordResetToken {
 
     public PasswordResetToken() {}
 
-    public PasswordResetToken(String token, StudentCredentials student) {
+    public PasswordResetToken(String token, Student student) {
         this.token = token;
         this.student = student;
         this.expiryDate = calculateExpiryDate(EXPIRATION);
@@ -53,11 +53,11 @@ public class PasswordResetToken {
         this.token = token;
     }
 
-    public StudentCredentials getStudent() {
+    public Student getStudent() {
         return student;
     }
 
-    public void setStudent(StudentCredentials student) {
+    public void setStudent(Student student) {
         this.student = student;
     }
 

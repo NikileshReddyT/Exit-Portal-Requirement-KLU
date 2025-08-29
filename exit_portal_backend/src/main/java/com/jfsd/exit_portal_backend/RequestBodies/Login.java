@@ -1,7 +1,12 @@
 package com.jfsd.exit_portal_backend.RequestBodies;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class Login {
 
+    @JsonProperty("universityId")
+    @JsonAlias({"universityid", "studentId", "id"})
     private String universityId;
     private String password;
 

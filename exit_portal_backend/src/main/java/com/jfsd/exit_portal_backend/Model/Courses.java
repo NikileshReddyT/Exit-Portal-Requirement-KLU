@@ -11,17 +11,14 @@ public class Courses {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int courseID;
 
-    @Column(nullable = true)
+    @Column(name = "course_code", nullable = false, unique = true)
     private String courseCode;
 
-    @Column(nullable = true)
+    @Column(name = "course_title", nullable = false)
     private String courseTitle;
 
-    @Column(nullable = true)
+    @Column(name = "course_credits", nullable = false)
     private double courseCredits;
-
-    @Column(name = "category", nullable = true)
-    private String category;  // Changed to a String to hold category name
 
     // Getters and Setters
 
@@ -70,11 +67,4 @@ public class Courses {
         this.courseCredits = courseCredits;
     }
 
-    public String getCategory() {
-        return category;
-    }
-
-    public void setCategory(String category) {
-        this.category = category;
-    }
 }

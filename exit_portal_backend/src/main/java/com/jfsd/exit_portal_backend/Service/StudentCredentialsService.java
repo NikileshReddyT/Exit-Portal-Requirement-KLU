@@ -16,8 +16,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.jfsd.exit_portal_backend.Model.StudentCredentials;
-import com.jfsd.exit_portal_backend.Repository.StudentCredentialsRepository;
+import com.jfsd.exit_portal_backend.Model.Student;
+import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
 
 @Service
@@ -27,41 +27,51 @@ public class StudentCredentialsService {
     private StudentGradeRepository studentGradeRepository;
 
     @Autowired
-    private StudentCredentialsRepository studentCredentialsRepository;
+    private StudentRepository studentRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // Method to generate and save unique student credentials
-    public List<StudentCredentials> generateAndSaveUniqueStudentCredentials() {
+    // Method to generate and save unique student credentials (migrated to Student entity)
+    public List<Student> generateAndSaveUniqueStudentCredentials() {
         // Retrieve all unique student IDs from the StudentGrade repository
         List<String> studentIds = studentGradeRepository.findAllUniqueStudentIds();
         
         // Use a Set to handle unique student IDs
         Set<String> uniqueStudentIds = new HashSet<>(studentIds);
         
-        List<StudentCredentials> credentials = new ArrayList<>();
+        List<Student> toSave = new ArrayList<>();
         Random random = new Random();
 
         for (String studentId : uniqueStudentIds) {
             // Generate a 6-digit random password
             String password = String.format("%06d", random.nextInt(999999));
             String hashedPassword = passwordEncoder.encode(password);
-            StudentCredentials credential = new StudentCredentials(studentId, hashedPassword);
-            credentials.add(credential);
+            Optional<Student> existing = studentRepository.findByStudentId(studentId);
+            if (existing.isPresent()) {
+                Student s = existing.get();
+                s.setPassword(hashedPassword);
+                toSave.add(s);
+            } else {
+                Student s = new Student();
+                s.setStudentId(studentId);
+                s.setStudentName(null);
+                s.setPassword(hashedPassword);
+                toSave.add(s);
+            }
         }
 
-        // Save all credentials to the StudentCredentials table
-        return studentCredentialsRepository.saveAll(credentials);
+        // Save all students with generated credentials
+        return studentRepository.saveAll(toSave);
     }
 
     // Method to find student credentials by studentId
-    public Optional<StudentCredentials> findByStudentId(String studentId) {
-        return studentCredentialsRepository.findByStudentId(studentId);
+    public Optional<Student> findByStudentId(String studentId) {
+        return studentRepository.findByStudentId(studentId);
     }
 
-    public List<StudentCredentials> getStudentCredentials() {
-        return studentCredentialsRepository.findAll();
+    public List<Student> getStudentCredentials() {
+        return studentRepository.findAll();
     }
 
     public ResponseEntity<String> populateCredentialsFromCSV(MultipartFile file) {
@@ -72,7 +82,7 @@ public class StudentCredentialsService {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
             String line = reader.readLine(); // Assuming header line
 
-            List<StudentCredentials> credentialsToSave = new ArrayList<>();
+            List<Student> toSave = new ArrayList<>();
             int updatedCount = 0;
             int createdCount = 0;
 
@@ -92,23 +102,26 @@ public class StudentCredentialsService {
 
                 String hashedPassword = passwordEncoder.encode(password);
 
-                Optional<StudentCredentials> existingCredentialOpt = studentCredentialsRepository.findByStudentId(studentId);
+                Optional<Student> existingOpt = studentRepository.findByStudentId(studentId);
 
-                if (existingCredentialOpt.isPresent()) {
+                if (existingOpt.isPresent()) {
                     // Update existing credential
-                    StudentCredentials existingCredential = existingCredentialOpt.get();
-                    existingCredential.setPassword(hashedPassword);
-                    credentialsToSave.add(existingCredential);
+                    Student existing = existingOpt.get();
+                    existing.setPassword(hashedPassword);
+                    toSave.add(existing);
                     updatedCount++;
                 } else {
                     // Create new credential
-                    StudentCredentials newCredential = new StudentCredentials(studentId, hashedPassword);
-                    credentialsToSave.add(newCredential);
+                    Student s = new Student();
+                    s.setStudentId(studentId);
+                    s.setStudentName(null);
+                    s.setPassword(hashedPassword);
+                    toSave.add(s);
                     createdCount++;
                 }
             }
 
-            studentCredentialsRepository.saveAll(credentialsToSave);
+            studentRepository.saveAll(toSave);
 
             String message = String.format("CSV processed successfully: %d records created, %d records updated.", createdCount, updatedCount);
             return ResponseEntity.ok(message);

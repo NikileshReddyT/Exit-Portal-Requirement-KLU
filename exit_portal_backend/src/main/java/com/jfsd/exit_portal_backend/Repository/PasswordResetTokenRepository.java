@@ -1,7 +1,7 @@
 package com.jfsd.exit_portal_backend.Repository;
 
 import com.jfsd.exit_portal_backend.Model.PasswordResetToken;
-import com.jfsd.exit_portal_backend.Model.StudentCredentials;
+import com.jfsd.exit_portal_backend.Model.Student;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -9,6 +9,6 @@ import org.springframework.stereotype.Repository;
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, Long> {
 
     PasswordResetToken findByToken(String token);
-    PasswordResetToken findByStudent(StudentCredentials student);
+    PasswordResetToken findByStudent(Student student);
 
 }

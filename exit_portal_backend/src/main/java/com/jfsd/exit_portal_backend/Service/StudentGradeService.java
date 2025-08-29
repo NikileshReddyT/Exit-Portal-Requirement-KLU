@@ -2,11 +2,22 @@ package com.jfsd.exit_portal_backend.Service;
 
 import com.jfsd.exit_portal_backend.Model.StudentGrade;
 import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
+import com.jfsd.exit_portal_backend.Repository.CoursesRepository;
+import com.jfsd.exit_portal_backend.Model.Courses;
+import com.jfsd.exit_portal_backend.Model.Student;
+import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -18,6 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.Optional;
+import java.util.Map;
+import java.util.HashMap;
 
 @Service
 public class StudentGradeService {
@@ -28,7 +41,23 @@ public class StudentGradeService {
     @Autowired
     private StudentCategoryProgressService studentCategoryProgressService;
 
-    @Transactional
+    @Autowired
+    private CoursesRepository coursesRepository;
+
+    @Autowired
+    private StudentRepository studentRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    private static final int BATCH_SIZE = 1000;
+
     public List<String> uploadCSV(MultipartFile file) {
         List<String> messages = new ArrayList<>();
         AtomicInteger updatedRecords = new AtomicInteger(0);
@@ -54,12 +83,56 @@ public class StudentGradeService {
                 return messages;
             }
 
-            List<StudentGrade> existingGrades = studentGradeRepository.findByUniversityIdIn(universityIdsInCsv);
-            
+            // Upsert Students: preload existing and create missing with BCrypt(studentId)
+            Map<String, Student> existingStudents = studentRepository.findAllByStudentIdIn(universityIdsInCsv)
+                .stream().collect(Collectors.toMap(Student::getStudentId, s -> s));
+            // capture a preferred name per student from CSV (column 2 if present)
+            Map<String, String> nameById = new HashMap<>();
+            for (int i = 1; i < lines.size(); i++) {
+                String[] vals = parseCsvLine(lines.get(i));
+                if (vals.length > 1) {
+                    String id = vals[0] == null ? "" : vals[0].trim();
+                    String nm = vals[1] == null ? "" : vals[1].trim();
+                    if (!id.isEmpty() && !nm.isEmpty()) nameById.put(id, nm);
+                }
+            }
+            List<Student> toCreateStudents = new ArrayList<>();
+            for (String id : universityIdsInCsv) {
+                if (!existingStudents.containsKey(id)) {
+                    String nm = nameById.getOrDefault(id, "");
+                    Student s = new Student(id, nm, passwordEncoder.encode(id));
+                    toCreateStudents.add(s);
+                    existingStudents.put(id, s);
+                }
+            }
+            if (!toCreateStudents.isEmpty()) {
+                studentRepository.saveAll(toCreateStudents);
+            }
+
+            // Preload existing grades for these students once
+            List<StudentGrade> existingGrades = studentGradeRepository.findByStudent_StudentIdIn(universityIdsInCsv);
+            // Key existing grades by (studentId, courseCode)
             java.util.Map<String, StudentGrade> existingGradesMap = existingGrades.stream()
-                .collect(Collectors.toMap(grade -> grade.getUniversityId() + "-" + grade.getCourseCode(), grade -> grade));
+                .filter(g -> g.getCourse() != null && g.getCourse().getCourseCode() != null && g.getStudent() != null)
+                .collect(Collectors.toMap(g -> g.getStudent().getStudentId() + "-" + norm(g.getCourse().getCourseCode()), g -> g, (a,b) -> a));
+
+            // Preload all unique course codes referenced in the CSV in one query
+            List<String> csvCourseCodes = lines.stream().skip(1)
+                .map(this::parseCsvLine)
+                .filter(arr -> arr.length > 3 && arr[3] != null && !arr[3].trim().isEmpty())
+                .map(arr -> arr[3].trim())
+                .distinct()
+                .collect(Collectors.toList());
+            java.util.Map<String, Courses> courseByCode = coursesRepository.findByCourseCodeIn(csvCourseCodes)
+                .stream()
+                .filter(c -> c.getCourseCode() != null)
+                .collect(Collectors.toMap(c -> norm(c.getCourseCode()), c -> c, (a, b) -> a));
 
             List<StudentGrade> gradesToSave = new ArrayList<>();
+            java.util.concurrent.atomic.AtomicInteger totalSaved = new java.util.concurrent.atomic.AtomicInteger(0);
+            // Transaction template for per-batch commits
+            TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+            txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
             for (int i = 1; i < lines.size(); i++) {
                 String line = lines.get(i);
                 int rowNumber = i + 1;
@@ -72,20 +145,23 @@ public class StudentGradeService {
 
                 String universityId = values[0].trim();
                 String courseCode = values[3].trim();
-                String lookupKey = universityId + "-" + courseCode;
+                String lookupKey = universityId + "-" + norm(courseCode);
 
                 StudentGrade grade = existingGradesMap.get(lookupKey);
                 if (grade != null) {
                     updatedRecords.incrementAndGet();
                 } else {
                     grade = new StudentGrade();
-                    grade.setUniversityId(universityId);
+                    Student s = existingStudents.get(universityId);
+                    if (s == null) {
+                        s = new Student(universityId, nameById.getOrDefault(universityId, ""), passwordEncoder.encode(universityId));
+                        s = studentRepository.save(s);
+                        existingStudents.put(universityId, s);
+                    }
+                    grade.setStudent(s);
                     grade.setCourseCode(courseCode);
                     createdRecords.incrementAndGet();
                 }
-
-                grade.setStudentName(values[1].trim());
-                grade.setStatus(values[2].trim());
                 grade.setCourseName(values[4].trim());
 
                 if (values.length > 5) {
@@ -110,12 +186,68 @@ public class StudentGradeService {
                 if (values.length > 10) grade.setSemester(values[10].trim());
                 if (values.length > 11) grade.setCategory(values[11].trim());
 
+                // Resolve and set Course entity using preloaded map (no per-row DB call)
+                if (courseCode != null && !courseCode.isEmpty()) {
+                    Courses course = courseByCode.get(norm(courseCode));
+                    if (course != null) {
+                        grade.setCourse(course);
+                        // Note: Category is now stored directly in StudentGrade CSV
+                        // Course-to-category mapping is handled by ProgramCourseCategory
+                    }
+                }
+
+                // Fallback: Ensure category is never null to satisfy DB NOT NULL until migration is applied
+                if (grade.getCategory() == null) {
+                    grade.setCategory("");
+                }
+
                 gradesToSave.add(grade);
+
+                // Flush in batches and print progress
+                if (gradesToSave.size() >= BATCH_SIZE) {
+                    txTemplate.execute(status -> {
+                        studentGradeRepository.saveAll(gradesToSave);
+                        studentGradeRepository.flush();
+                        entityManager.clear();
+                        totalSaved.addAndGet(gradesToSave.size());
+                        System.out.println("Saved batch. Total saved so far: " + totalSaved.get());
+                        gradesToSave.clear();
+                        return null;
+                    });
+                }
             }
 
             if (!gradesToSave.isEmpty()) {
-                studentGradeRepository.saveAll(gradesToSave);
-                studentCategoryProgressService.calculateAndUpdateProgressForStudents(universityIdsInCsv);
+                txTemplate.execute(status -> {
+                    studentGradeRepository.saveAll(gradesToSave);
+                    studentGradeRepository.flush();
+                    entityManager.clear();
+                    totalSaved.addAndGet(gradesToSave.size());
+                    System.out.println("Saved final batch. Total saved: " + totalSaved.get());
+                    return null;
+                });
+            }
+
+            // Recalculate progress AFTER COMMIT to prevent rolling back saved batches if it fails
+            if (totalSaved.get() > 0) {
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            try {
+                                studentCategoryProgressService.calculateAndUpdateProgressForStudents(universityIdsInCsv);
+                            } catch (Exception ex) {
+                                System.err.println("Progress calculation failed post-commit: " + ex.getMessage());
+                            }
+                        }
+                    });
+                } else {
+                    try {
+                        studentCategoryProgressService.calculateAndUpdateProgressForStudents(universityIdsInCsv);
+                    } catch (Exception ex) {
+                        System.err.println("Progress calculation failed: " + ex.getMessage());
+                    }
+                }
             }
 
             messages.add("CSV file processed successfully.");
@@ -134,7 +266,7 @@ public class StudentGradeService {
     }
 
     public List<StudentGrade> getGradesByUniversityId(String universityId) {
-        return studentGradeRepository.findByUniversityId(universityId);
+        return studentGradeRepository.findByStudent_StudentId(universityId);
     }
 
     public Optional<StudentGrade> getGradeById(Long id) {
@@ -153,8 +285,7 @@ public class StudentGradeService {
         Optional<StudentGrade> grade = studentGradeRepository.findById(id);
         if (grade.isPresent()) {
             StudentGrade existingGrade = grade.get();
-            existingGrade.setUniversityId(gradeDetails.getUniversityId());
-            existingGrade.setStudentName(gradeDetails.getStudentName());
+            existingGrade.setStudent(gradeDetails.getStudent());
             existingGrade.setCourseCode(gradeDetails.getCourseCode());
             existingGrade.setCourseName(gradeDetails.getCourseName());
             existingGrade.setGrade(gradeDetails.getGrade());
@@ -165,6 +296,11 @@ public class StudentGradeService {
             return studentGradeRepository.save(existingGrade);
         }
         return null;
+    }
+
+    // Normalize course codes for consistent map keys and lookups
+    private String norm(String s) {
+        return s == null ? "" : s.trim().toUpperCase();
     }
 
     private String[] parseCsvLine(String line) {

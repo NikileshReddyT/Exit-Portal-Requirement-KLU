@@ -18,9 +18,14 @@ public class StudentCategoryProgressController {
     private StudentCategoryProgressService progressService;
 
     @GetMapping("/run")
-    public ResponseEntity<String> calculateProgress() {
+    public ResponseEntity<String> calculateProgress(
+            @RequestParam(value = "programCode", required = false) String programCode) {
         try {
-            progressService.calculateAndUpdateProgress();
+            if (programCode != null) {
+                progressService.calculateAndUpdateProgressForProgram(programCode);
+            } else {
+                progressService.calculateAndUpdateProgress();
+            }
             return ResponseEntity.ok("Progress calculation completed successfully");
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
@@ -30,12 +35,20 @@ public class StudentCategoryProgressController {
 
     @GetMapping("/student/{universityId}")
     public ResponseEntity<List<StudentCategoryProgress>> getStudentProgress(
-            @PathVariable String universityId) {
+            @PathVariable String universityId,
+            @RequestParam(value = "programCode", required = false) String programCode) {
+        if (programCode != null) {
+            return ResponseEntity.ok(progressService.getStudentProgressForProgram(universityId, programCode));
+        }
         return ResponseEntity.ok(progressService.getStudentProgress(universityId));
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<StudentCategoryProgress>> getAllProgress() {
+    public ResponseEntity<List<StudentCategoryProgress>> getAllProgress(
+            @RequestParam(value = "programCode", required = false) String programCode) {
+        if (programCode != null) {
+            return ResponseEntity.ok(progressService.getAllProgressForProgram(programCode));
+        }
         return ResponseEntity.ok(progressService.getAllProgress());
     }
 }

@@ -61,13 +61,8 @@ public class CategoriesService {
                         createdRecords.incrementAndGet();
                     }
 
-                    try {
-                        category.setMinCourses(Integer.parseInt(values[2].trim()));
-                        category.setMinCredits(Double.parseDouble(values[3].trim()));
-                    } catch (NumberFormatException e) {
-                        messages.add("Skipping row " + rowNumber + ": Invalid number format for min courses or credits.");
-                        return null;
-                    }
+                    // Note: Min courses and credits are now handled by ProgramCategoryRequirement
+                    // This service now only handles category names and program relationships
 
                     return category;
                 })

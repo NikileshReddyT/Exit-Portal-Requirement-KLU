@@ -12,9 +12,12 @@ public class Categories {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int categoryID;
 
+    @ManyToOne
+    @JoinColumn(name = "program_id", nullable = true)
+    private Program program;
+
+    @Column(name = "category_name", nullable = false)
     private String categoryName;
-    private int minCourses;
-    private double minCredits;
 
 
     public int getCategoryID() {
@@ -33,20 +36,13 @@ public class Categories {
         this.categoryName = categoryName;
     }
 
-    public int getMinCourses() {
-        return minCourses;
+
+    public Program getProgram() {
+        return program;
     }
 
-    public void setMinCourses(int minCourses) {
-        this.minCourses = minCourses;
-    }
-
-    public double getMinCredits() {
-        return minCredits;
-    }
-
-    public void setMinCredits(double minCredits) {
-        this.minCredits = minCredits;
+    public void setProgram(Program program) {
+        this.program = program;
     }
 
     @Override

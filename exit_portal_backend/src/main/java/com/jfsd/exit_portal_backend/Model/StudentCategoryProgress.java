@@ -1,9 +1,19 @@
 package com.jfsd.exit_portal_backend.Model;
 
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import jakarta.persistence.*;
 
 @Entity
 @Table(name = "student_category_progress")
+@JsonPropertyOrder({
+        "universityId",
+        "studentName",
+        "categoryName",
+        "minRequiredCourses",
+        "completedCourses",
+        "minRequiredCredits",
+        "completedCredits"
+})
 public class StudentCategoryProgress {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -18,6 +28,16 @@ public class StudentCategoryProgress {
     @Column(name = "category_name", nullable = false)
     private String categoryName;
 
+    // New relation to avoid redundancy, kept nullable for smooth migration
+    @ManyToOne
+    @JoinColumn(name = "category_id", nullable = true)
+    private Categories category;
+
+    @ManyToOne
+    @JoinColumn(name = "program_id", nullable = true)
+    private Program program;
+
+    // Persisted minimums per program/category
     @Column(name = "min_required_credits", nullable = false)
     private Double minRequiredCredits;
 
@@ -30,7 +50,7 @@ public class StudentCategoryProgress {
     @Column(name = "completed_credits", nullable = false)
     private Double completedCredits;
 
-    // Default constructor
+    // Default constructor 
     public StudentCategoryProgress() {}
 
     // Parameterized constructor
@@ -72,11 +92,30 @@ public class StudentCategoryProgress {
     }
 
     public String getCategoryName() {
+        if (category != null) {
+            return category.getCategoryName();
+        }
         return categoryName;
     }
 
     public void setCategoryName(String categoryName) {
         this.categoryName = categoryName;
+    }
+
+    public Categories getCategory() {
+        return category;
+    }
+
+    public void setCategory(Categories category) {
+        this.category = category;
+    }
+
+    public Program getProgram() {
+        return program;
+    }
+
+    public void setProgram(Program program) {
+        this.program = program;
     }
 
     public Double getMinRequiredCredits() {
@@ -117,7 +156,7 @@ public class StudentCategoryProgress {
                 "id=" + id +
                 ", universityId='" + universityId + '\'' +
                 ", studentName='" + studentName + '\'' +
-                ", categoryName='" + categoryName + '\'' +
+                ", categoryName='" + getCategoryName() + '\'' +
                 ", minRequiredCredits=" + minRequiredCredits +
                 ", minRequiredCourses=" + minRequiredCourses +
                 ", completedCourses=" + completedCourses +
