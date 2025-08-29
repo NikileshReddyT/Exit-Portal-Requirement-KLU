@@ -154,6 +154,7 @@ const CategoryDetailsPage = () => {
     const promotedCount = promotedCourses.length;
     const pendingCount = Math.max(0, minRequiredCourses - promotedCount);
     const progressPercentage = minRequiredCourses > 0 ? (promotedCount / minRequiredCourses) * 100 : 0;
+    const isCompleted = minRequiredCourses > 0 && promotedCount >= minRequiredCourses;
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
@@ -171,7 +172,7 @@ const CategoryDetailsPage = () => {
                     </div>
 
                     <h1
-                        className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal tracking-tight leading-snug break-words"
+                        className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal tracking-tight leading-snug break-words text-center md:text-left md:py-4 md:px-2 mb-4"
                         title={decodeURIComponent(categoryName)}
                     >
                         {decodeURIComponent(categoryName)}
@@ -187,12 +188,22 @@ const CategoryDetailsPage = () => {
                         <div className="flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6">
                             <div className="text-center md:text-left">
                                 <p className="text-gray-500 text-sm">Progress</p>
-                                <p className="text-2xl sm:text-3xl font-bold text-brand-charcoal">
-                                    {promotedCount} / {minRequiredCourses} <span className="text-xl font-medium">Courses Completed</span>
-                                </p>
-                                <p className="text-gray-500 text-sm mt-1">
-                                    You need to complete {pendingCount} more courses in this category.
-                                </p>
+                                {isCompleted ? (
+                                    <p className="text-2xl sm:text-3xl font-bold text-brand-charcoal">
+                                        Completed all required courses
+                                    </p>
+                                ) : (
+                                    <p className="text-2xl sm:text-3xl font-bold text-brand-charcoal">
+                                        {promotedCount} / {minRequiredCourses} <span className="text-xl font-medium">Courses Completed</span>
+                                    </p>
+                                )}
+                                {isCompleted ? (
+                                    <p className="text-green-600 text-sm mt-1">Great job! You're done with this category.</p>
+                                ) : (
+                                    <p className="text-gray-500 text-sm mt-1">
+                                        You need to complete {pendingCount} more courses in this category.
+                                    </p>
+                                )}
                             </div>
                             <div className="w-full md:w-1/3">
                                 <div className="w-full bg-gray-200 rounded-full h-2.5">
