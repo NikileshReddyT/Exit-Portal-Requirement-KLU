@@ -221,6 +221,15 @@ const ResultsUpload = () => {
               </div>
             )}
 
+            {uploading && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+                <FiAlertCircle className="h-4 w-4 text-blue-600" />
+                <p className="text-sm text-blue-800">
+                  Processing may take a few seconds to minutes. Please wait and do not close this tab.
+                </p>
+              </div>
+            )}
+
             <button
               onClick={handleUpload}
               disabled={uploading}

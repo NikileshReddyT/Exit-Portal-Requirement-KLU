@@ -429,6 +429,16 @@ public class StudentGradeBatchImportService {
     // Ensure unique index on (university_id, course_id) to enable ON DUPLICATE KEY UPDATE
     private void ensureUniqueIndexForUpsert() {
         try {
+            // Fast path: skip if index already exists
+            Integer idxCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='student_grades' AND INDEX_NAME='uq_student_grades_uid_course'",
+                    Integer.class
+            );
+            if (idxCount != null && idxCount > 0) {
+                log.debug("Unique index uq_student_grades_uid_course already exists; skipping creation.");
+                return;
+            }
             jdbcTemplate.execute("ALTER TABLE student_grades ADD UNIQUE KEY uq_student_grades_uid_course (university_id, course_id)");
             log.info("Created unique index uq_student_grades_uid_course on (university_id, course_id)");
         } catch (DataAccessException ex) {
@@ -495,9 +505,21 @@ public class StudentGradeBatchImportService {
             int idxCourse = indexOfHeader(header, "CourseCode");
             int idxYear = indexOfHeader(header, "AcademicYear");
             int idxSem = indexOfHeader(header, "Semester");
+            int idxName = indexOfHeader(header, "Name");
             if (idxUid < 0 || idxCourse < 0 || idxYear < 0 || idxSem < 0) {
                 messages.add("Required columns missing (University ID, CourseCode, AcademicYear, Semester).");
                 return messages;
+            }
+
+            // build name map (optional) for student upsert
+            Map<String, String> nameById = new HashMap<>();
+            for (int i = 1; i < lines.size(); i++) {
+                String[] row = parseCsvLine(lines.get(i));
+                if (row.length > Math.max(idxUid, idxName)) {
+                    String id = safe(row, idxUid);
+                    String name = idxName >= 0 ? safe(row, idxName) : "";
+                    if (!id.isEmpty() && !name.isEmpty()) nameById.put(id, name);
+                }
             }
 
             // choose latest registration per (uid, course)
@@ -540,66 +562,134 @@ public class StudentGradeBatchImportService {
                     .filter(g -> g.getCourse() != null && g.getCourse().getCourseCode() != null && g.getStudent() != null)
                     .collect(Collectors.toMap(g -> g.getStudent().getStudentId() + "-" + norm(g.getCourse().getCourseCode()), g -> g, (a,b)->a));
 
-            AtomicInteger updated = new AtomicInteger(0);
-            AtomicInteger processedRegRows = new AtomicInteger(0);
-            List<StudentGrade> toSave = new ArrayList<>();
+            // preload courses
+            Set<String> courseCodes = latest.values().stream().map(r -> r.code).collect(Collectors.toSet());
+            Map<String, Courses> courseByCode = coursesRepository.findByCourseCodeIn(new ArrayList<>(courseCodes))
+                    .stream()
+                    .filter(c -> c.getCourseCode() != null)
+                    .collect(Collectors.toMap(c -> norm(c.getCourseCode()), c -> c, (a, b) -> a));
+            // find unknown courses
+            Set<String> missingCourseCodes = courseCodes.stream()
+                    .filter(code -> !courseByCode.containsKey(code))
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+
+            // counts estimation (only consider known courses)
+            Set<String> latestKnownKeys = latest.values().stream()
+                    .filter(r -> courseByCode.containsKey(r.code))
+                    .map(r -> r.uid + "-" + r.code)
+                    .collect(Collectors.toSet());
+            long updatedCount = latestKnownKeys.stream().filter(byKey::containsKey).count();
+            long insertCount = latestKnownKeys.size() - updatedCount;
+
             TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
             txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
-            for (RegRow r : latest.values()) {
-                int c = processedRegRows.incrementAndGet();
-                if (c % 10 == 0) {
-                    log.info("Processed {} registration rows...", c);
-                }
-                String key = r.uid + "-" + r.code;
-                StudentGrade g = byKey.get(key);
-                if (g == null) {
-                    messages.add("No existing grade for registration (" + key + "), skipping.");
-                    continue; // skip and log
-                }
-                g.setYear(r.year);
-                g.setSemester(r.sem);
-                toSave.add(g);
-                int up = updated.incrementAndGet();
-                if (toSave.size() >= BATCH_SIZE) {
-                    List<StudentGrade> batch = new ArrayList<>(toSave);
-                    toSave.clear();
-                    long tBatchStart = System.nanoTime();
-                    txTemplate.execute(tx -> {
-                        studentGradeRepository.saveAll(batch);
-                        studentGradeRepository.flush();
-                        entityManager.clear();
-                        return null;
-                    });
-                    long batchMs = (System.nanoTime() - tBatchStart) / 1_000_000;
-                    if (up % 10 == 0) {
-                        log.info("Saved {} registration updates so far (last batch {} rows in {} ms)...", up, batch.size(), batchMs);
-                    }
-                }
-            }
-            if (!toSave.isEmpty()) {
-                List<StudentGrade> batch = new ArrayList<>(toSave);
-                toSave.clear();
-                long tBatchStart = System.nanoTime();
-                txTemplate.execute(tx -> {
-                    studentGradeRepository.saveAll(batch);
-                    studentGradeRepository.flush();
-                    entityManager.clear();
-                    return null;
+            // Execute everything in one DB transaction/connection to keep TEMP table alive
+            txTemplate.execute(status -> {
+                // 1) Upsert students in bulk (create missing like Step 1)
+                final String upsertStudentsSql = "INSERT INTO students (student_id, student_name, password) VALUES (?, ?, ?) " +
+                        "ON DUPLICATE KEY UPDATE student_name=VALUES(student_name)";
+                List<String> allStudentIds = new ArrayList<>(studentIds);
+                jdbcTemplate.batchUpdate(upsertStudentsSql, allStudentIds, allStudentIds.size(), (ps, sid) -> {
+                    ps.setString(1, sid);
+                    ps.setString(2, nameById.getOrDefault(sid, ""));
+                    ps.setString(3, passwordEncoder.encode(sid));
                 });
-                long batchMs = (System.nanoTime() - tBatchStart) / 1_000_000;
-                log.info("Saved final registration batch ({} rows) in {} ms", batch.size(), batchMs);
+
+                // 2) Stage latest registrations into a TEMP table
+                jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_registrations");
+                jdbcTemplate.execute("CREATE TEMPORARY TABLE tmp_registrations (" +
+                        "university_id VARCHAR(64) NOT NULL, " +
+                        "course_code VARCHAR(50) NOT NULL, " +
+                        "academic_year VARCHAR(20), " +
+                        "semester VARCHAR(10), " +
+                        "PRIMARY KEY (university_id, course_code)) ENGINE=InnoDB");
+                // Speed up join to courses by indexing course_code (PK prefix is university_id, so add separate index)
+                jdbcTemplate.execute("CREATE INDEX idx_tmp_reg_course ON tmp_registrations(course_code)");
+
+                final String insTmp = "INSERT INTO tmp_registrations (university_id, course_code, academic_year, semester) VALUES (?, ?, ?, ?)";
+                List<RegRow> regs = latest.values().stream()
+                        .filter(r -> courseByCode.containsKey(r.code)) // keep only known courses
+                        .collect(Collectors.toList());
+                AtomicInteger semNormOrTruncCount = new AtomicInteger(0);
+                jdbcTemplate.batchUpdate(insTmp, regs, regs.size(), (ps, r) -> {
+                    ps.setString(1, r.uid);
+                    ps.setString(2, r.code);
+                    ps.setString(3, r.year);
+                    String nSem = normalizeSemester(r.sem);
+                    if (r.sem != null) {
+                        String t = r.sem.trim();
+                        if (t.length() > 10 && !Objects.equals(nSem, t)) {
+                            semNormOrTruncCount.incrementAndGet();
+                        }
+                    }
+                    ps.setString(4, nSem);
+                });
+                if (semNormOrTruncCount.get() > 0) {
+                    log.info("Registrations: normalized/truncated semester for {} rows to fit DB constraints.", semNormOrTruncCount.get());
+                }
+
+                // 3) Merge into student_grades in one native upsert
+                ensureUniqueIndexForUpsert();
+                final String mergeSql = "INSERT INTO student_grades (university_id, course_id, grade, grade_point, promotion, category, academic_year, semester) " +
+                        "SELECT r.university_id, c.courseid, NULL, NULL, 'R', COALESCE(cat.category_name, ''), r.academic_year, r.semester " +
+                        "FROM tmp_registrations r " +
+                        "JOIN courses c ON c.course_code = r.course_code " +
+                        "LEFT JOIN students s ON s.student_id = r.university_id " +
+                        "LEFT JOIN program_course_category pcc ON pcc.course_id = c.courseid AND pcc.program_id = s.program_id " +
+                        "LEFT JOIN categories cat ON cat.categoryID = pcc.category_id " +
+                        "ON DUPLICATE KEY UPDATE academic_year=VALUES(academic_year), semester=VALUES(semester), category=VALUES(category)";
+                // Diagnostics: count rows that will end up with empty category (no mapping found)
+                try {
+                    String countUnmappedSql = "SELECT COUNT(*) FROM tmp_registrations r " +
+                            "JOIN courses c ON c.course_code = r.course_code " +
+                            "LEFT JOIN students s ON s.student_id = r.university_id " +
+                            "LEFT JOIN program_course_category pcc ON pcc.course_id = c.courseid AND pcc.program_id = s.program_id " +
+                            "LEFT JOIN categories cat ON cat.categoryID = pcc.category_id " +
+                            "WHERE cat.categoryID IS NULL";
+                    Integer unmappedCount = jdbcTemplate.queryForObject(countUnmappedSql, Integer.class);
+                    if (unmappedCount != null && unmappedCount > 0) {
+                        String sampleSql = "SELECT DISTINCT r.course_code FROM tmp_registrations r " +
+                                "JOIN courses c ON c.course_code = r.course_code " +
+                                "LEFT JOIN students s ON s.student_id = r.university_id " +
+                                "LEFT JOIN program_course_category pcc ON pcc.course_id = c.courseid AND pcc.program_id = s.program_id " +
+                                "LEFT JOIN categories cat ON cat.categoryID = pcc.category_id " +
+                                "WHERE cat.categoryID IS NULL " +
+                                "LIMIT 10";
+                        List<String> sampleCodes = jdbcTemplate.query(sampleSql, (rs, i) -> rs.getString(1));
+                        log.warn("Registrations: {} rows have no mapped category; sample course codes: {}", unmappedCount, sampleCodes);
+                    }
+                } catch (Exception diagEx) {
+                    log.warn("Registrations: diagnostics for category mapping failed: {}", diagEx.getMessage());
+                }
+                jdbcTemplate.update(mergeSql);
+
+                // 4) Cleanup temp table
+                jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_registrations");
+                return null;
+            });
+
+            // Recalculate progress for affected students asynchronously to reduce endpoint latency
+            if (!studentIds.isEmpty()) {
+                Set<String> idsForRecalc = new HashSet<>(studentIds);
+                new Thread(() -> {
+                    try {
+                        log.info("Starting category progress recompute for {} students after Registrations upload (Step 2)", idsForRecalc.size());
+                        studentCategoryProgressService.calculateAndUpdateProgressForStudents(idsForRecalc);
+                        log.info("Completed category progress recompute after Registrations upload (Step 2)");
+                    } catch (Exception ex) {
+                        log.error("Progress recalculation error after Registrations (Step 2): {}", ex.getMessage());
+                    }
+                }, "progress-recompute-after-registrations").start();
+            } else {
+                log.info("No affected students to recompute progress for after Registrations upload (Step 2)");
             }
 
-            // Recalculate progress for affected students
-            try {
-                studentCategoryProgressService.calculateAndUpdateProgressForStudents(studentIds);
-            } catch (Exception ex) {
-                messages.add("Progress recalculation error: " + ex.getMessage());
+            if (!missingCourseCodes.isEmpty()) {
+                messages.add("Skipped unknown course codes: " + String.join(", ", missingCourseCodes));
             }
-
-            messages.add("Registrations processed. Grades updated: " + updated.get());
-            messages.add("Skipped rows are logged above if any grade was missing.");
+            messages.add("Registrations processed. Grades updated: " + updatedCount + ", Missing registrations inserted: " + insertCount);
+            messages.add("Processed in a single native SQL merge for performance.");
         } catch (IOException e) {
             messages.add("Error reading file: " + e.getMessage());
         }
@@ -697,5 +787,18 @@ public class StudentGradeBatchImportService {
         if (s.contains("EVEN")) return 2;
         if (s.contains("ODD")) return 1;
         return 0;
+    }
+
+    private String normalizeSemester(String sem) {
+        if (sem == null) return null;
+        String s = sem.trim();
+        // common normalizations
+        String up = s.toUpperCase(Locale.ROOT);
+        if (up.contains("ODD")) up = "ODD";
+        else if (up.contains("EVEN")) up = "EVEN";
+        else if (up.contains("SUMMER")) up = "SUMMER";
+        // ensure fits DB column length (VARCHAR(10) per temp table design)
+        if (up.length() > 10) up = up.substring(0, 10);
+        return up;
     }
 }
