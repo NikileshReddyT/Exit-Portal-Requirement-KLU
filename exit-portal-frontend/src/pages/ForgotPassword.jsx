@@ -21,7 +21,6 @@ const ForgotPassword = () => {
             await axios.post(`${config.backendUrl}/api/v1/password/forgot`, { universityId: email });
             setMessage(`Password reset link has been sent to ${email}@kluniversity.in, this might take a couple of minutes please be patient.`);
         } catch (err) {
-            console.log(err);
             setError('Failed to send reset email. Please Check your ID and try again.');
         }
         setLoading(false);

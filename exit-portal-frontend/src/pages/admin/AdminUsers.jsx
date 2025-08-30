@@ -33,6 +33,7 @@ const AdminUsers = () => {
     programId: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     if (!user || user.userType !== 'SUPER_ADMIN') {
@@ -84,10 +85,7 @@ const AdminUsers = () => {
     try {
       // Log admin object and computed values
       // Note: Remove these logs if too noisy in production
-      console.log('[AdminUsers] openEdit admin:', admin);
-      console.log('[AdminUsers] rawProgramId:', rawProgramId, 'computedProgramId:', computedProgramId, 'role:', admin?.role);
       const programListBrief = programs.map(p => ({ id: p.id, code: p.code }));
-      console.log('[AdminUsers] programs in state:', programListBrief);
       const existsInList = programListBrief.some(p => String(p.id) === computedProgramId);
       if (computedProgramId && !existsInList) {
         console.warn('[AdminUsers] Computed programId not found in programs list:', computedProgramId);
@@ -157,6 +155,7 @@ const AdminUsers = () => {
       await axios.post(`${config.backendUrl}/api/v1/admin/admin-users`, payload, { withCredentials: true });
       setForm({ username: '', name: '', password: '', role: 'ADMIN', programId: programId || '' });
       await loadData();
+      setShowCreate(false);
     } catch (err) {
       console.error(err);
       alert(err?.response?.data || 'Failed to create admin');
@@ -191,6 +190,8 @@ const AdminUsers = () => {
     ? [ { label: 'Super Admin', to: '/superadmin/dashboard' }, { label: 'Admin Users' } ]
     : [ { label: 'Admin', to: '/admin/dashboard' }, { label: 'Admin Users' } ];
 
+  // Show all users (including SUPER_ADMIN)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b">
@@ -206,10 +207,19 @@ const AdminUsers = () => {
         <div className="mb-4">
           <Breadcrumbs items={crumbs} />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {/* List */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Existing Admins</h2>
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Existing Users</h2>
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="px-4 py-2 bg-red-900 text-white rounded hover:bg-red-800"
+              >
+                + Add New
+              </button>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -239,48 +249,6 @@ const AdminUsers = () => {
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {/* Create form */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New Admin</h2>
-            <form className="space-y-4" onSubmit={onSubmit}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                <input name="username" value={form.username} onChange={onChange} className="w-full border rounded px-3 py-2" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input name="name" value={form.name} onChange={onChange} className="w-full border rounded px-3 py-2" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input type="password" name="password" value={form.password} onChange={onChange} className="w-full border rounded px-3 py-2" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                <select name="role" value={form.role} onChange={onChange} className="w-full border rounded px-3 py-2">
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Program</label>
-                <select name="programId" value={form.programId} onChange={onChange} className="w-full border rounded px-3 py-2" disabled={form.role !== 'ADMIN'}>
-                  <option value="">{form.role === 'ADMIN' ? '-- Select a program --' : '(optional)'}</option>
-                  {programs.map(p => (
-                    <option key={p.id} value={String(p.id)}>{p.code} - {p.name}</option>
-                  ))}
-                </select>
-                {form.role === 'ADMIN' && (
-                  <p className="text-xs text-gray-500 mt-1">Required for ADMIN role</p>
-                )}
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" disabled={submitting} className="px-4 py-2 bg-red-900 text-white rounded hover:bg-red-800 disabled:opacity-50">{submitting ? 'Creating...' : 'Create Admin'}</button>
-                <button type="button" onClick={() => setForm({ username: '', name: '', password: '', role: 'ADMIN', programId: '' })} className="px-4 py-2 border rounded">Clear</button>
-              </div>
-            </form>
           </div>
         </div>
 
@@ -324,6 +292,55 @@ const AdminUsers = () => {
                 <div className="flex gap-3 justify-end">
                   <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 border rounded">Cancel</button>
                   <button type="submit" className="px-4 py-2 bg-red-900 text-white rounded hover:bg-red-800">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Create Modal */}
+        {showCreate && (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Create New Admin</h3>
+                <button type="button" className="px-3 py-1 border rounded" onClick={() => setShowCreate(false)}>Close</button>
+              </div>
+              <form className="space-y-4" onSubmit={onSubmit}>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                  <input name="username" value={form.username} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input name="name" value={form.name} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <input type="password" name="password" value={form.password} onChange={onChange} className="w-full border rounded px-3 py-2" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  <select name="role" value={form.role} onChange={onChange} className="w-full border rounded px-3 py-2">
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Program</label>
+                  <select name="programId" value={form.programId} onChange={onChange} className="w-full border rounded px-3 py-2" disabled={form.role !== 'ADMIN'}>
+                    <option value="">{form.role === 'ADMIN' ? '-- Select a program --' : '(optional)'}</option>
+                    {programs.map(p => (
+                      <option key={p.id} value={String(p.id)}>{p.code} - {p.name}</option>
+                    ))}
+                  </select>
+                  {form.role === 'ADMIN' && (
+                    <p className="text-xs text-gray-500 mt-1">Required for ADMIN role</p>
+                  )}
+                </div>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 border rounded">Cancel</button>
+                  <button type="submit" disabled={submitting} className="px-4 py-2 bg-red-900 text-white rounded hover:bg-red-800 disabled:opacity-50">{submitting ? 'Creating...' : 'Create Admin'}</button>
                 </div>
               </form>
             </div>

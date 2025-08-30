@@ -31,7 +31,6 @@ export const AuthProvider = ({ children }) => {
                 withCredentials: true // Important for cookies
             });
             
-            console.log('[AuthContext] Login response:', loginResponse.data);
 
             if (loginResponse.data) {
                 const userData = {
@@ -49,7 +48,6 @@ export const AuthProvider = ({ children }) => {
                     })
                 };
                 
-                console.log('[AuthContext] Setting user data:', userData);
                 
                 setUser(userData);
                 setIsAuthenticated(true);
@@ -82,14 +80,11 @@ export const AuthProvider = ({ children }) => {
 
     // This function allows other parts of the app (like DataContext) to add info to the user object.
     const updateUser = useCallback((updates) => {
-        console.log('[AuthContext] Attempting to update user with:', updates);
         setUser(prevUser => {
             if (!prevUser) {
-                console.log('[AuthContext] No previous user state to update.');
                 return null;
             }
             const updatedUser = { ...prevUser, ...updates };
-            console.log('[AuthContext] User state updated:', updatedUser);
             localStorage.setItem('user', JSON.stringify(updatedUser));
             return updatedUser;
         });

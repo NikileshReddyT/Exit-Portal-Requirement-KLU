@@ -32,7 +32,6 @@ export const ProgramProvider = ({ children }) => {
 
     // If a program identifier is in the URL, it's the source of truth.
     if (urlProgramId && urlProgramId !== selectedProgramId) {
-        console.log(`ProgramContext - Syncing from URL programId: ${urlProgramId}`);
         // When program is changed via URL, clear old info and set new ID.
         // The component using this context (e.g., AdminOverview) is responsible for fetching the new programInfo.
         setSelectedProgramId(urlProgramId);
@@ -43,7 +42,6 @@ export const ProgramProvider = ({ children }) => {
   }, [location.search, selectedProgramId]);
 
   const setProgramContext = (programId, programData) => {
-    console.log('ProgramContext - setProgramContext called with:', { programId, programData });
     
     const newProgramId = programId?.toString() || null;
     
@@ -51,18 +49,15 @@ export const ProgramProvider = ({ children }) => {
     if (newProgramId && newProgramId !== selectedProgramId) {
       setSelectedProgramId(newProgramId);
       sessionStorage.setItem('selectedProgramId', newProgramId);
-      console.log(`ProgramContext - Set programId to: ${newProgramId}`);
     }
 
     if (programData && JSON.stringify(programData) !== JSON.stringify(programInfo)) {
       setProgramInfo(programData);
       sessionStorage.setItem('programInfo', JSON.stringify(programData));
-      console.log('ProgramContext - Set programInfo to:', programData);
     }
   };
 
   const clearProgramContext = () => {
-    console.log('ProgramContext - Clearing program context.');
     setSelectedProgramId(null);
     setProgramInfo(null);
     sessionStorage.removeItem('selectedProgramId');

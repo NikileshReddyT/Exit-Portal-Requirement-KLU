@@ -55,16 +55,11 @@ const AdminOverview = () => {
           apiUrl += `?programId=${effectiveProgramId}`;
         }
         
-        console.log('AdminOverview - API URL:', apiUrl);
-        console.log('AdminOverview - User:', user);
-        console.log('AdminOverview - programId from context/URL:', programId);
-        console.log('AdminOverview - effectiveProgramId:', effectiveProgramId);
         
         const res = await axios.get(apiUrl, { withCredentials: true });
         
         if (isCancelled) return; // Prevent state update if component unmounted or effect cancelled
         
-        console.log('AdminOverview - API Response:', res.data);
         setData(res.data || {});
         
         // Fetch program details if we have an effective program ID and don't have current program info
@@ -156,21 +151,7 @@ const AdminOverview = () => {
         {/* <StatCard title="Categories" value={data?.stats?.totalCategories} color="purple" subtitle="Available" /> */}
       </div>
 
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick actions</h3>
-        <div className="-mx-1 overflow-x-auto sm:overflow-visible">
-          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap">
-            <QuickLink label="Students" onClick={() => navigate(`${basePath}/students${programId ? `?programId=${programId}` : ''}`)} />
-            <QuickLink label="Categories" onClick={() => navigate(`${basePath}/categories${programId ? `?programId=${programId}` : ''}`)} />
-            <QuickLink label="Courses" onClick={() => navigate(`${basePath}/courses${programId ? `?programId=${programId}` : ''}`)} />
-            <QuickLink label="Grades" onClick={() => navigate(`${basePath}/grades${programId ? `?programId=${programId}` : ''}`)} />
-            <QuickLink label="Progress" onClick={() => navigate(`${basePath}/progress${programId ? `?programId=${programId}` : ''}`)} />
-            {isSuperAdmin && (
-              <QuickLink label="Admin Users" onClick={() => navigate(`${basePath}/users`)} />
-            )}
-          </div>
-        </div>
-      </div>
+   
 
       <div className="bg-white rounded-lg shadow p-4 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Upload</h3>
@@ -202,6 +183,21 @@ const AdminOverview = () => {
           </div>
         </div>
       )}
+         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick actions</h3>
+        <div className="-mx-1 overflow-x-auto sm:overflow-visible">
+          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap">
+            <QuickLink label="Students" onClick={() => navigate(`${basePath}/students${programId ? `?programId=${programId}` : ''}`)} />
+            <QuickLink label="Categories" onClick={() => navigate(`${basePath}/categories${programId ? `?programId=${programId}` : ''}`)} />
+            <QuickLink label="Courses" onClick={() => navigate(`${basePath}/courses${programId ? `?programId=${programId}` : ''}`)} />
+            <QuickLink label="Grades" onClick={() => navigate(`${basePath}/grades${programId ? `?programId=${programId}` : ''}`)} />
+            <QuickLink label="Progress" onClick={() => navigate(`${basePath}/progress${programId ? `?programId=${programId}` : ''}`)} />
+            {isSuperAdmin && (
+              <QuickLink label="Admin Users" onClick={() => navigate(`${basePath}/users`)} />
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

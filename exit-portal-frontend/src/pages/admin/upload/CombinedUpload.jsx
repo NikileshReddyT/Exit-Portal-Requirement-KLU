@@ -17,14 +17,7 @@ const CombinedUpload = () => {
   const [error, setError] = useState('');
 
   const handleFileChange = (e) => {
-    console.log('🔄 File change event triggered:', e);
     const selectedFile = e.target.files[0];
-    console.log('📁 Selected file:', selectedFile);
-    console.log('📋 File details:', {
-      name: selectedFile?.name,
-      type: selectedFile?.type,
-      size: selectedFile?.size
-    });
     
     const isCsv = selectedFile && (
       selectedFile.type === 'text/csv' ||
@@ -33,61 +26,41 @@ const CombinedUpload = () => {
     );
 
     if (isCsv) {
-      console.log('✅ Valid CSV file selected');
       setFile(selectedFile);
       setError('');
       setUploadResult(null);
     } else {
-      console.log('❌ Invalid file type:', selectedFile?.type);
       setError('Please select a valid CSV file');
       setFile(null);
     }
   };
 
   const handleUpload = async () => {
-    console.log('🚀 Upload function called');
-    console.log('📊 Current state:', {
-      file: file,
-      fileName: file?.name,
-      selectedProgramId: selectedProgramId,
-      programCode: programCode,
-      defaultCredits: defaultCredits,
-      currentlyUploading: uploading
-    });
+
     
     // Prevent multiple simultaneous uploads
     if (uploading) {
-      console.log('⏸️ Upload already in progress, ignoring...');
       return;
     }
 
     if (!file || !programCode) {
-      console.log('❌ Upload validation failed:', { file: !!file, programCode: !!programCode });
       setError('Please select a file and ensure a program is selected');
       return;
     }
 
-    console.log('✅ Upload validation passed, setting uploading state...');
     setUploading(true);
     setError('');
     setUploadResult(null);
     
-    console.log('🔄 Uploading state set to true');
 
     const formData = new FormData();
     formData.append('file', file);
     
-    console.log('📦 FormData prepared:', {
-      file: file.name,
-      programCode: programCode,
-      defaultCredits: defaultCredits || 'not provided (query param will be used)'
-    });
 
     try {
       const params = new URLSearchParams({ programCode: programCode });
       if (defaultCredits) params.append('defaultCredits', String(defaultCredits));
       const uploadUrl = `${config.backendUrl}/api/combined/upload?${params.toString()}`;
-      console.log('🌐 Making request to:', uploadUrl);
       
       const response = await fetch(uploadUrl, {
         method: 'POST',
@@ -95,30 +68,23 @@ const CombinedUpload = () => {
         credentials: 'include'
       });
       
-      console.log('📡 Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
+      
 
       if (response.ok) {
         const result = await response.text();
-        console.log('✅ Upload successful:', result);
         setUploadResult({ success: true, message: result });
         setFile(null);
         setDefaultCredits('');
         document.getElementById('file-input').value = '';
       } else {
         const errorText = await response.text();
-        console.log('❌ Upload failed:', { status: response.status, error: errorText });
         setError(errorText || 'Upload failed');
       }
     } catch (err) {
-      console.log('🚨 Network error:', err);
       setError('Network error occurred during upload');
     } finally {
-      console.log('🏁 Upload process completed, resetting uploading state');
       setUploading(false);
+      
     }
   };
 

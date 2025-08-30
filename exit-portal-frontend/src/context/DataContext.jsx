@@ -18,16 +18,13 @@ export const DataProvider = ({ children }) => {
 
     const fetchStudentProgress = useCallback(async () => {
         if (!user?.universityId) {
-            console.log('[DataContext] fetchStudentProgress skipped: no universityId.');
             return;
         }
 
-        console.log(`[DataContext] Fetching student progress for universityId: ${user.universityId}`);
         setLoadingProgress('pending');
         try {
             const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: user.universityId });
             response.data.reverse();
-            console.log('[DataContext] Received student progress data:', response.data);
             
             setStudentProgressData(response.data);
             setLoadingProgress('succeeded');
@@ -41,15 +38,12 @@ export const DataProvider = ({ children }) => {
     }, [user?.universityId, updateUser]);
 
     useEffect(() => {
-        console.log(`[DataContext] useEffect triggered. isAuthenticated: ${isAuthenticated}, studentProgressData exists: ${!!studentProgressData}`);
         // Fetch data only when the user is authenticated and data hasn't been fetched yet.
         if (isAuthenticated && !studentProgressData) {
-            console.log('[DataContext] Conditions met, calling fetchStudentProgress.');
             fetchStudentProgress();
         }
         // If user logs out, clear the data.
         if (!isAuthenticated) {
-            console.log('[DataContext] User logged out, clearing data.');
             setStudentProgressData(null);
             setFullReportData(null);
         }
