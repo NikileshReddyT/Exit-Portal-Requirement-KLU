@@ -4,7 +4,6 @@ import config from '../config';
 
 const AuthContext = createContext(null);
 
-
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(() => {
         const storedUser = localStorage.getItem('user');
@@ -17,7 +16,6 @@ export const AuthProvider = ({ children }) => {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser);
-            
             setUser(parsedUser);
             setIsAuthenticated(true);
         }
@@ -25,49 +23,56 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (credentials) => {
         try {
-            // Step 1: Authenticate the user
+            // Unified login endpoint - handles both student and admin authentication
             const loginResponse = await axios.post(`${config.backendUrl}/api/v1/frontend/login`, {
                 universityId: credentials.universityId,
                 password: credentials.password
+            }, {
+                withCredentials: true // Important for cookies
             });
             
-            console.log(loginResponse.data);
+            console.log('[AuthContext] Login response:', loginResponse.data);
 
-            if (loginResponse.data && loginResponse.data.universityid && loginResponse.data.studentName) {
-                const universityId = loginResponse.data.universityid;
-                const name = loginResponse.data.studentName;
-                // console.log(`[AuthContext] Login successful for universityId: ${universityId}`);
-
-                // // Step 2: Fetch student data to get the name
-                // console.log('[AuthContext] Fetching student details...');
-                // const dataResponse = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: universityId });
-
-                // let studentName = null;
-                // if (dataResponse.data && dataResponse.data.length > 0) {
-                //     studentName = dataResponse.data[0].studentName;
-                //     console.log(`[AuthContext] Found student name: "${studentName}"`);
-                // }
-
-                // Step 3: Create a complete user object and update the state
-                const userData = { universityId, name };
-                console.log('[AuthContext] Setting complete user object:', userData);
+            if (loginResponse.data) {
+                const userData = {
+                    userType: loginResponse.data.userType,
+                    role: loginResponse.data.role,
+                    ...(loginResponse.data.userType === 'STUDENT' ? {
+                        universityId: loginResponse.data.universityId,
+                        name: loginResponse.data.studentName
+                    } : {
+                        username: loginResponse.data.username,
+                        name: loginResponse.data.name,
+                        programId: loginResponse.data.programId,
+                        programCode: loginResponse.data.programCode,
+                        programName: loginResponse.data.programName
+                    })
+                };
                 
-
+                console.log('[AuthContext] Setting user data:', userData);
+                
                 setUser(userData);
                 setIsAuthenticated(true);
                 localStorage.setItem('user', JSON.stringify(userData));
                 
-                return true; // Indicate success
+                return userData; // Return user data for routing decisions
             }
-            return false; // Indicate login failure
+            return false;
         } catch (err) {
             console.error('[AuthContext] Login process failed:', err);
-            // Re-throw the error so the UI component can catch it and display a message
             throw err;
         }
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            // Clear JWT cookie by making a request to backend
+            await axios.post(`${config.backendUrl}/api/v1/frontend/logout`, {}, {
+                withCredentials: true
+            });
+        } catch (error) {
+            console.error('Logout request failed:', error);
+        }
         
         setUser(null);
         setIsAuthenticated(false);

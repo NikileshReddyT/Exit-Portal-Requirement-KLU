@@ -22,16 +22,25 @@ const Login = () => {
         setLoading(true);
 
         try {
-            const success = await login({ universityId: id, password });
-            if (success) {
-                navigate('/dashboard');
+            const userData = await login({ universityId: id, password });
+            if (userData) {
+                // Role-based routing
+                if (userData.userType === 'SUPER_ADMIN') {
+                    navigate('/superadmin/dashboard');
+                } else if (userData.userType === 'ADMIN') {
+                    navigate('/admin/dashboard');
+                } else if (userData.userType === 'STUDENT') {
+                    navigate('/dashboard');
+                } else {
+                    setError('Unknown user type received from server.');
+                }
             } else {
                 setError('Unexpected response from server.');
             }
         } catch (err) {
             if (err.response) {
                 if (err.response.status === 401) {
-                    setError('Incorrect password. Please try again.');
+                    setError('Incorrect credentials. Please try again.');
                 } else if (err.response.status === 404) {
                     setError('User not found. Please check your ID.');
                 } else {
@@ -115,7 +124,7 @@ const Login = () => {
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <motion.div variants={formVariants}>
                                 <label className="block text-gray-700 text-sm lg:text-base font-bold mb-2" htmlFor="university-id">
-                                    University ID
+                                    Username
                                 </label>
                                 <div className="relative">
                                     <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />

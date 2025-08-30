@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -17,5 +18,8 @@ public interface CategoriesRepository extends JpaRepository<Categories, Integer>
     Optional<Categories> findByCategoryNameIgnoreCase(@Param("name") String name);
 
     Optional<Categories> findByProgramAndCategoryName(Program program, String categoryName);
+
+    // List categories for a program (3NF-friendly)
+    List<Categories> findByProgram(Program program);
 
 }

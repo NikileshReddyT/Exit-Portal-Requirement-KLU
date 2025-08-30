@@ -12,4 +12,5 @@ import java.util.Optional;
 public interface StudentRepository extends JpaRepository<Student, String> {
     Optional<Student> findByStudentId(String studentId);
     List<Student> findAllByStudentIdIn(Collection<String> studentIds);
+    long countByProgram_ProgramId(Long programId);
 }

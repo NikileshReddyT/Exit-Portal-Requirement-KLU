@@ -1,5 +1,7 @@
 package com.jfsd.exit_portal_backend.Repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.Set;
 
@@ -33,4 +35,22 @@ public interface StudentGradeRepository extends JpaRepository<StudentGrade, Long
     List<String> findStudentIdsByProgramCode(@Param("programCode") String programCode);
 
     List<StudentGrade> findByStudent_StudentIdIn(Set<String> studentIds);
+
+    // Pageable queries for fast, paginated listings
+    Page<StudentGrade> findAll(Pageable pageable);
+
+    Page<StudentGrade> findByStudent_Program_ProgramId(Long programId, Pageable pageable);
+
+    Page<StudentGrade> findByStudent_StudentId(String studentId, Pageable pageable);
+
+    Page<StudentGrade> findByStudent_Program_ProgramIdAndStudent_StudentId(Long programId, String studentId, Pageable pageable);
+
+    // Paged query for grades filtered by student and category
+    Page<StudentGrade> findByStudent_StudentIdAndCategory(String studentId, String category, Pageable pageable);
+
+    // Course completers (students with promotion 'P')
+    List<StudentGrade> findByCourse_CourseCodeAndPromotionIgnoreCase(String courseCode, String promotion);
+
+    // Course completers scoped by program
+    List<StudentGrade> findByCourse_CourseCodeAndPromotionIgnoreCaseAndStudent_Program_ProgramId(String courseCode, String promotion, Long programId);
 }
