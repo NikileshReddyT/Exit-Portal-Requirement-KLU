@@ -83,24 +83,28 @@ const RegistrationsUpload = () => {
   };
 
   const downloadTemplate = () => {
-    // Backend expects headers: University ID, CourseCode, AcademicYear, Semester; Name is optional
-    const csvContent = "University ID,Name,CourseCode,AcademicYear,Semester\n2200080001,JOHN DOE,22CS1101,2022-23,ODD\n2200080002,JANE SMITH,22MT1101,2022-23,ODD\n2200080003,BOB JOHNSON,22CS1101,2022-23,EVEN";
+    // ERP SRC sample (first 3 rows) with exact headers from RegistrationDates.csv
+    const csvContent =
+      "ProfileID,University ID,Name,CourseCode,LTPS,CourseDesc,Bucket Group,Course Nature,AcademicYear,Semester,Study Year,Section,RegisterDate,course ref id,Offered To,Offered By,Course Catalogue\n" +
+      "60147,2200080268,Miriyala Bala Kiran,22AD1202,L,OBJECT ORIENTED PROGRAMMING SYSTEM (PYTHON),mandatory,Regular,2022-2023,Even Sem,1,S-4-MA,12/26/22,42902,AI&DS,DBES-1,ESC\n" +
+      "60147,2200080268,Miriyala Bala Kiran,22AD1202,P,OBJECT ORIENTED PROGRAMMING SYSTEM (PYTHON),mandatory,Regular,2022-2023,Even Sem,1,S-4-MA,12/26/22,42902,AI&DS,DBES-1,ESC\n" +
+      "60147,2200080268,Miriyala Bala Kiran,22AD1202,S,OBJECT ORIENTED PROGRAMMING SYSTEM (PYTHON),mandatory,Regular,2022-2023,Even Sem,1,S-4-MA,12/26/22,42902,AI&DS,DBES-1,ESC";
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'registrations_template.csv';
+    a.download = 'RegistrationDates_sample.csv';
     a.click();
     window.URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto md:p-6 ">
       <div className="bg-white rounded-lg shadow-lg">
         <div className="border-b border-gray-200 px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <FiUsers className="h-6 w-6 text-indigo-600" />
-            Registrations Upload
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <FiUsers className="h-6 w-6 text-indigo-600 " />
+            Student Registration Courses (SRC) Upload
           </h1>
           {programInfo && (
             <p className="text-sm text-gray-600 mt-1">
@@ -112,24 +116,25 @@ const RegistrationsUpload = () => {
         <div className="p-6">
           <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
             <h3 className="font-medium text-indigo-900 mb-2">Upload Instructions</h3>
+            
             <ul className="text-sm text-indigo-800 space-y-1">
-              <li>• Upload a CSV file containing student registration information</li>
-              <li>• Required columns: University ID, CourseCode, AcademicYear, Semester</li>
-              <li>• Optional column: Name (used to upsert student records on first import)</li>
+              <li>• Upload SRC (Student Registration Courses) data exported from the ERP</li>
+              <li>• Expected headers (ERP export): Download the sample file to see the expected headers</li>
+              <li className='hidden md:block'>• Minimum required for processing: University ID, CourseCode, AcademicYear, Semester.</li>
               <li>• File size limit: 10MB</li>
               <li>• Course codes must exist in the system</li>
-              <li>• AcademicYear format examples: 2022-23, 2023-24</li>
-              <li>• Semester examples: ODD, EVEN, SUMMER</li>
+              <li className='hidden md:block'>• AcademicYear examples: 2022-2023, 2023-2024</li>
+              <li className='hidden md:block'>• Semester examples: Odd Sem, Even Sem, Summer</li>
             </ul>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 flex justify-center md:justify-start">
             <button
               onClick={downloadTemplate}
               className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
             >
               <FiDownload className="h-4 w-4" />
-              Download Template
+              Download ERP SRC Sample
             </button>
           </div>
 
@@ -168,7 +173,7 @@ const RegistrationsUpload = () => {
                     <p className="mb-2 text-sm text-gray-500">
                       <span className="font-semibold">Click to upload</span> or drag and drop
                     </p>
-                    <p className="text-xs text-gray-500">CSV files only</p>
+                    <p className="text-xs text-gray-500">CSV files only (ERP SRC export)</p>
                   </div>
                   <input
                     id="file-input"

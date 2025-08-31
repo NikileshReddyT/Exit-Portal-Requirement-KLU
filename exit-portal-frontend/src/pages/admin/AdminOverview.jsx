@@ -117,8 +117,8 @@ const AdminOverview = () => {
       {/* Program Info Section */}
       {programInfo && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-blue-900 mb-2">Program Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <h3 className="text-lg font-semibold text-blue-900 mb-2 text-center md:text-left">Program Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-center md:text-left ">
             <div>
               <span className="font-medium text-blue-800">Code:</span>
               <span className="ml-2 text-blue-700">{programInfo.code}</span>
@@ -126,10 +126,6 @@ const AdminOverview = () => {
             <div>
               <span className="font-medium text-blue-800">Name:</span>
               <span className="ml-2 text-blue-700">{programInfo.name}</span>
-            </div>
-            <div>
-              <span className="font-medium text-blue-800">ID:</span>
-              <span className="ml-2 text-blue-700">{programInfo.programId}</span>
             </div>
           </div>
         </div>
@@ -156,7 +152,7 @@ const AdminOverview = () => {
       <div className="bg-white rounded-lg shadow p-4 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Upload</h3>
         <div className="-mx-1 overflow-x-auto sm:overflow-visible">
-          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap">
+          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap flex-col md:flex-row">
             <QuickLink label="Category & Course Upload" onClick={() => navigate(`${basePath}/upload/combined${programCode ? `?programCode=${encodeURIComponent(programCode)}` : ''}`)} />
             <QuickLink label="Student Result Upload" onClick={() => navigate(`${basePath}/upload/results${programCode ? `?programCode=${encodeURIComponent(programCode)}` : ''}`)} />
             <QuickLink label="Registration Upload" onClick={() => navigate(`${basePath}/upload/registrations${programCode ? `?programCode=${encodeURIComponent(programCode)}` : ''}`)} />
@@ -186,7 +182,7 @@ const AdminOverview = () => {
          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick actions</h3>
         <div className="-mx-1 overflow-x-auto sm:overflow-visible">
-          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap">
+          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap flex-col md:flex-row">
             <QuickLink label="Students" onClick={() => navigate(`${basePath}/students${programId ? `?programId=${programId}` : ''}`)} />
             <QuickLink label="Categories" onClick={() => navigate(`${basePath}/categories${programId ? `?programId=${programId}` : ''}`)} />
             <QuickLink label="Courses" onClick={() => navigate(`${basePath}/courses${programId ? `?programId=${programId}` : ''}`)} />

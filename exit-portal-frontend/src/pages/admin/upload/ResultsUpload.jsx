@@ -85,7 +85,7 @@ const ResultsUpload = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto md:p-6">
       <div className="bg-white rounded-lg shadow-lg">
         <div className="border-b border-gray-200 px-6 py-4">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -103,15 +103,15 @@ const ResultsUpload = () => {
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
             <h3 className="font-medium text-orange-900 mb-2">Upload Instructions</h3>
             <ul className="text-sm text-orange-800 space-y-1">
-              <li>• Upload a CSV file containing student results and grades</li>
-              <li>• Required columns: University Id, Student Name, Academic Year, Semester, Attempt CREDITS, OBTAINED CREDITS</li>
-              <li>• Course columns should follow format: Grade|Credits|Type (e.g., A+|4|1-mandatory)</li>
-              <li>• File size limit: 50MB (larger files supported for results)</li>
+              <li>• Upload a CSV file containing student results and grades from ERP</li>
+              <li>• Required columns: Match with the template</li>
+              {/* <li>• Course columns should follow format: Grade|Credits|Type (e.g., A+|4|1-mandatory)</li> */}
+              <li>• File size limit: 10MB </li>
               <li>• Results will be associated with the current program</li>
             </ul>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 flex justify-center md:justify-start">
             <button
               onClick={downloadTemplate}
               className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"

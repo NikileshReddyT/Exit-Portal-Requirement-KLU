@@ -89,7 +89,19 @@ const CombinedUpload = () => {
   };
 
   const downloadTemplate = () => {
-    const csvContent = "Sl No,CATEGORY,MIN. COURSES #,MIN. CREDITS #,COURSE CODE,COURSE TITLE,CR\n1,Mathematics,2,6,22MT1101,Calculus I,3\n2,Mathematics,2,6,22MT1102,Linear Algebra,3\n3,Computer Science,3,12,22CS1101,Programming Fundamentals,4";
+    const csvContent =
+      "Sl No,CATEGORY,MIN. COURSES #,MIN. CREDITS #,COURSE CODE,COURSE TITLE,CR\n" +
+      "1,Humanities & Social Sciences (HSS),11,18,22UC1101,INTEGRATED PROFESSIONAL ENGLISH,2\n" +
+      "2,,,,22UC1202,ENGLISH PROFICIENCY,2\n" +
+      "3,,,,22UC2103,ESSENTIAL SKILLS FOR EMPLOYABILITY,2\n" +
+      "4,,,,22UC2204,CORPORATE READINESS SKILLS,2\n" +
+      "5,,,,22UC0010,UNIVERSAL HUMAN VALUES & PROFESSIONAL ETHICS,2\n" +
+      "13,Basic Sciences (BS),6,23.5,22MT1101,MATHEMATICS FOR COMPUTING,4.5\n" +
+      "14,,,,22MT2102,MATHEMATICS FOR ENGINEERS,3\n" +
+      "15,,,,22MT2004,MATHEMATICAL PROGRAMMING,4\n" +
+      "16,,,,22MT2005,\"PROBABILITY, STATISTICS & QUEUEING THEORY\",4\n" +
+      "17,,,,22PH4102,APPLIED PHYSICS,4\n" +
+      "18,,,,22PH4101,QUANTUM PHYSICS FOR ENGINEERS,4";
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -100,7 +112,7 @@ const CombinedUpload = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto md:p-6">
       <div className="bg-white rounded-lg shadow-lg">
         <div className="border-b border-gray-200 px-6 py-4">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -119,14 +131,14 @@ const CombinedUpload = () => {
             <h3 className="font-medium text-purple-900 mb-2">Upload Instructions</h3>
             <ul className="text-sm text-purple-800 space-y-1">
               <li>• Upload a CSV file containing both categories and courses information</li>
-              <li>• Required columns: Sl No, CATEGORY, MIN. COURSES #, MIN. CREDITS #, COURSE CODE, COURSE TITLE, CR</li>
+              <li>• Required columns: Sl No, CATEGORY, MIN COURSES , MIN CREDITS , COURSE CODE, COURSE TITLE, CR</li>
               <li>• File size limit: 10MB</li>
               <li>• Categories and courses will be created/updated for the current program</li>
               <li>• Duplicate categories will be merged automatically</li>
             </ul>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 flex justify-center md:justify-start">
             <button
               onClick={downloadTemplate}
               className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
