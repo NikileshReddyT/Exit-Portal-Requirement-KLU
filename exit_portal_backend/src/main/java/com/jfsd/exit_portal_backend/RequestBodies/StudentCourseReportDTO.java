@@ -6,6 +6,7 @@ import java.util.List;
 public class StudentCourseReportDTO {
     private String studentId;
     private String studentName;
+    private List<StudentCategoryProgressDTO> categoryProgress;
     private List<CategoryCoursesDTO> categories;
     private int totalCompletedCourses;
     private double totalCompletedCredits;
@@ -52,5 +53,12 @@ public class StudentCourseReportDTO {
 
     public void setTotalCompletedCredits(double totalCompletedCredits) {
         this.totalCompletedCredits = totalCompletedCredits;
+    }
+    public List<StudentCategoryProgressDTO> getCategoryProgress() {
+        return categoryProgress;
+    }
+
+    public void setCategoryProgress(List<StudentCategoryProgressDTO> categoryProgress) {
+        this.categoryProgress = categoryProgress;
     }
 }

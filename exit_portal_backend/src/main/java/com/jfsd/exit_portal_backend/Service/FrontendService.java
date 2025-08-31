@@ -163,10 +163,12 @@ public class FrontendService {
 
             // Fetch category progress rows (includes min requirements and completed metrics)
             List<StudentCategoryProgress> rows = studentCategoryProgressService.getStudentProgress(universityId);
-
+            List<StudentCategoryProgressDTO> studentCategoryProgressDTO = getStudentCategoryProgress(universityId);
+            
             StudentCourseReportDTO report = new StudentCourseReportDTO();
             report.setStudentId(studentEntity.getStudentId());
             report.setStudentName(studentEntity.getStudentName());
+            report.setCategoryProgress(studentCategoryProgressDTO);
 
             List<CategoryCoursesDTO> categories = new ArrayList<>();
             int totalCompletedCourses = 0;

@@ -102,7 +102,6 @@ public class CategoriesService {
     }
 
     public void addCourseCredits(MultipartFile file) {
-        // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'addCourseCredits'");
     }
 }

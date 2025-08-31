@@ -22,6 +22,7 @@ const PdfDownloadButton = ({ studentId }) => {
         `${config.backendUrl}/api/v1/frontend/generatereport`,
         { universityId: studentId }
       );
+      data.categoryProgress = data.categoryProgress.reverse();
       data.categories = data.categories.reverse();
       setReportData(data || null);
     } catch (err) {
@@ -74,8 +75,54 @@ const PdfDownloadButton = ({ studentId }) => {
     doc.text(String(totalCompletedCourses), CARD_X + 165, infoY);
     doc.text(String(totalCompletedCredits), CARD_X + CARD_WIDTH / 2 + 145, infoY);
   
-    let curY = 56 + infoCardH + 18;
-  
+    let curY = 56 + infoCardH + 28; // ample space before summary table
+    
+    // --- CATEGORY PROGRESS SUMMARY TABLE ---
+    try {
+      doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(128, 0, 0);
+      doc.text('Category Progress Summary', CARD_X + 18, curY);
+      doc.autoTable({
+        startY: curY + 10,
+        margin: { left: CARD_X + 14 },
+        tableWidth: CARD_WIDTH - 28,
+        styles: { fontSize: 8.6, cellPadding: 3.4, halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [128, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [249, 245, 245] },
+        columnStyles: { 0: { halign: 'left' } },
+        head: [[
+          'Category', 'Req Courses', 'Req Credits', 'Reg Courses', 'Reg Credits', 'Done Courses', 'Done Credits'
+        ]],
+        body: (reportData.categoryProgress ?? []).length > 0
+          ? (reportData.categoryProgress ?? []).map(cp => [
+              cp.categoryName ?? '-',
+              String(cp.minRequiredCourses ?? '-'),
+              String(cp.minRequiredCredits ?? '-'),
+              String(cp.registeredCourses ?? '-'),
+              String(cp.registeredCredits ?? '-'),
+              String(cp.completedCourses ?? '-'),
+              String(cp.completedCredits ?? '-')
+            ])
+          : [[{ content: 'No category progress data', colSpan: 7, styles: { halign: 'center', fontStyle: 'italic', textColor: [136, 136, 136] } }]],
+        theme: 'striped',
+      });
+      curY = doc.lastAutoTable.finalY + CARD_MARGIN_Y;
+    } catch (e) {
+      // If the table fails for some reason, continue PDF generation gracefully
+      curY += 12;
+    }
+    
+    // Helpers: normalization for year & semester
+    const normalizeYear = (y) => String(y ?? '').replace(/\s+/g, '').replace(/[–—]/g, '-').replace(/-+/g, '-');
+    const normalizeSem = (s) => {
+      const up = String(s ?? '').toUpperCase();
+      if (up.includes('ODD')) return 'ODD';
+      if (up.includes('EVEN')) return 'EVEN';
+      if (up.includes('SUMMER')) return 'SUMMER';
+      return up;
+    };
+    const filterYearNorm = normalizeYear(reportData.filterYear ?? reportData.year ?? '');
+    const filterSemNorm = normalizeSem(reportData.filterSemester ?? reportData.semester ?? '');
+
     // --- CATEGORY CARDS ---
     (reportData.categories ?? []).forEach((cat, idx) => {
       // DATA
@@ -84,18 +131,50 @@ const PdfDownloadButton = ({ studentId }) => {
       const doneCourses = cat.completedCourses || 0;
       const doneCredits = cat.completedCredits || 0;
       const requirementMet = (doneCourses >= reqCourses) && (doneCredits >= reqCredits);
-      const available = (cat.incompleteCourses || []).slice().sort((a,b) => (a.courseCode || '').localeCompare(b.courseCode || ''));
+      // Robust filtering inputs: support filterYear/filterSemester or year/semester at top-level
+      const filterYear = filterYearNorm || null;
+      const filterSem = filterSemNorm || null;
+      const completedRaw = (cat.courses || []);
+      const availableRaw = (cat.incompleteCourses || []);
+      const completed = completedRaw.filter(c => {
+        const cy = normalizeYear(c.year);
+        const cs = normalizeSem(c.semester);
+        return (!filterYear || cy === String(filterYear)) && (!filterSem || cs === filterSem);
+      });
+      const available = availableRaw
+        .filter(c => {
+          const cy = normalizeYear(c.year);
+          const cs = normalizeSem(c.semester);
+          return (!filterYear || cy === String(filterYear)) && (!filterSem || cs === filterSem);
+        })
+        .slice();
+
+      // Chronological sort: Year, then Semester (ODD < EVEN < SUMMER), then courseCode
+      const SEM_ORDER = { ODD: 1, EVEN: 2, SUMMER: 3 };
+      const semKey = s => SEM_ORDER[s] ?? 99;
+      const yearKey = y => normalizeYear(y);
+      const compareYearSem = (a, b) => {
+        const ya = yearKey(a.year);
+        const yb = yearKey(b.year);
+        if (ya !== yb) return ya.localeCompare(yb);
+        const sa = semKey(normalizeSem(a.semester));
+        const sb = semKey(normalizeSem(b.semester));
+        if (sa !== sb) return sa - sb;
+        return (a.courseCode || '').localeCompare(b.courseCode || '');
+      };
+      completed.sort(compareYearSem);
+      available.sort(compareYearSem);
       const remainingCourses = Math.max(0, reqCourses - doneCourses);
       const remainingCredits = Math.max(0, reqCredits - doneCredits);
   
       // Height Estimate
-      const completedCount = Math.max((cat.courses || []).length, 1);
+      const completedCount = Math.max(completed.length, 1);
       const availableCount = available.length;
       const summaryH = 24;
       const progressH = 30;
       const descH = 40;
       const completedTableH = 28 + completedCount * 19;
-      const availableTableH = availableCount > 0 ? (28 + availableCount * 17) : 0;
+      const availableTableH = (!requirementMet && availableCount > 0) ? (28 + availableCount * 17) : 0;
       const cardH = summaryH + progressH + descH + completedTableH + availableTableH + 60;
   
       // Page break if needed (no new heading!)
@@ -164,9 +243,14 @@ const PdfDownloadButton = ({ studentId }) => {
         alternateRowStyles: { fillColor: [249, 245, 245] },
         columnStyles: { 1: { halign: 'left' } },
         head: [['Code', 'Name', 'Yr', 'Sem', 'Credits', 'Grade']],
-        body: (cat.courses ?? []).length > 0
-          ? (cat.courses ?? []).map(c => [
-              c.courseCode ?? "-", c.courseName ?? '-', c.year ?? '-', c.semester ?? '-', c.credits ?? '-', c.grade ?? '-'
+        body: completed.length > 0
+          ? completed.map(c => [
+              c.courseCode ?? "-",
+              c.courseName ?? '-',
+              c.year ?? '-',
+              c.semester ?? '-',
+              c.credits ?? '-',
+              (c.grade && String(c.grade).trim() !== '' ? c.grade : 'Registered')
             ])
           : [[{ content: 'No courses completed yet', colSpan: 6, styles: { halign: 'center', fontStyle: 'italic', textColor: [136, 136, 136] } }]],
         theme: 'striped',
@@ -200,7 +284,7 @@ const PdfDownloadButton = ({ studentId }) => {
       yCursor += 43;
   
       // --- AVAILABLE COURSES TABLE (now AFTER the info!) ---
-      if (available.length > 0) {
+      if (!requirementMet && available.length > 0) {
         doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(215, 138, 18);
         doc.text('Available (required) Courses', CARD_X + 18, yCursor + 2);
         doc.autoTable({
