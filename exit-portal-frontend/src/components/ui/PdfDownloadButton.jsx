@@ -81,30 +81,54 @@ const PdfDownloadButton = ({ studentId }) => {
     try {
       doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(128, 0, 0);
       doc.text('Category Progress Summary', CARD_X + 18, curY);
+      const summaryStartY = curY + 10;
       doc.autoTable({
-        startY: curY + 10,
+        startY: summaryStartY,
         margin: { left: CARD_X + 14 },
         tableWidth: CARD_WIDTH - 28,
-        styles: { fontSize: 8.6, cellPadding: 3.4, halign: 'center', valign: 'middle' },
-        headStyles: { fillColor: [128, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold' },
+        styles: { fontSize: 8.6, cellPadding: 3.4, halign: 'center', valign: 'middle', lineWidth: 0.6, lineColor: [110, 0, 0] },
+        headStyles: { fillColor: [128, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold', cellPadding: { top: 8, right: 6, bottom: 8, left: 6 }, minCellHeight: 20, lineWidth: 1.2, lineColor: [110, 0, 0] },
+        bodyStyles: { lineWidth: 0.6, lineColor: [130, 0, 0] },
         alternateRowStyles: { fillColor: [249, 245, 245] },
         columnStyles: { 0: { halign: 'left' } },
-        head: [[
-          'Category', 'Req Courses', 'Req Credits', 'Reg Courses', 'Reg Credits', 'Done Courses', 'Done Credits'
-        ]],
+        head: [
+          [
+            { content: 'Category', rowSpan: 2 },
+            { content: 'Course', colSpan: 3 },
+            { content: 'Credits', colSpan: 3 }
+          ],
+          [
+            'Required', 'Registered', 'Completed',
+            'Required', 'Registered', 'Completed'
+          ]
+        ],
         body: (reportData.categoryProgress ?? []).length > 0
-          ? (reportData.categoryProgress ?? []).map(cp => [
-              cp.categoryName ?? '-',
-              String(cp.minRequiredCourses ?? '-'),
-              String(cp.minRequiredCredits ?? '-'),
-              String(cp.registeredCourses ?? '-'),
-              String(cp.registeredCredits ?? '-'),
-              String(cp.completedCourses ?? '-'),
-              String(cp.completedCredits ?? '-')
-            ])
+          ? (reportData.categoryProgress ?? []).map(cp => {
+              const reqC = Number(cp.minRequiredCourses) || 0;
+              const regC = Number(cp.registeredCourses) || 0;
+              const doneC = Number(cp.completedCourses) || 0;
+              const reqCr = Number(cp.minRequiredCredits) || 0;
+              const regCr = Number(cp.registeredCredits) || 0;
+              const doneCr = Number(cp.completedCredits) || 0;
+              return [
+                cp.categoryName ?? '-',
+                String(reqC), String(regC), String(doneC),
+                String(reqCr), String(regCr), String(doneCr)
+              ];
+            })
           : [[{ content: 'No category progress data', colSpan: 7, styles: { halign: 'center', fontStyle: 'italic', textColor: [136, 136, 136] } }]],
         theme: 'striped',
       });
+      // Draw bold rounded outer border around the summary table
+      try {
+        const tableX = CARD_X + 14;
+        const tableW = CARD_WIDTH - 28;
+        const tableY = summaryStartY;
+        const tableH = Math.max(0, (doc.lastAutoTable.finalY || tableY) - tableY);
+        doc.setDrawColor(128, 0, 0);
+        doc.setLineWidth(1.4);
+        doc.roundedRect(tableX, tableY, tableW, tableH, 10, 10, 'S');
+      } catch (e) { /* ignore */ }
       curY = doc.lastAutoTable.finalY + CARD_MARGIN_Y;
     } catch (e) {
       // If the table fails for some reason, continue PDF generation gracefully
@@ -166,6 +190,19 @@ const PdfDownloadButton = ({ studentId }) => {
       available.sort(compareYearSem);
       const remainingCourses = Math.max(0, reqCourses - doneCourses);
       const remainingCredits = Math.max(0, reqCredits - doneCredits);
+
+      // Registered detection: grade missing/empty OR promotion === 'R'
+      const isRegistered = (c) => {
+        const grade = (c.grade ?? '').toString().trim();
+        const promo = (c.promotion ?? '').toString().toUpperCase();
+        return grade === '' || promo === 'R';
+      };
+      const registeredList = completed.filter(isRegistered);
+      const registeredCount = registeredList.length;
+      const registeredCredits = registeredList.reduce((s, c) => s + (Number(c.credits) || 0), 0);
+
+      // Virtually meets requirement if registered + completed cover the remaining
+      const virtuallyMetWithRegistered = !requirementMet && (registeredCount >= remainingCourses) && (registeredCredits >= remainingCredits);
   
       // Height Estimate
       const completedCount = Math.max(completed.length, 1);
@@ -174,7 +211,7 @@ const PdfDownloadButton = ({ studentId }) => {
       const progressH = 30;
       const descH = 40;
       const completedTableH = 28 + completedCount * 19;
-      const availableTableH = (!requirementMet && availableCount > 0) ? (28 + availableCount * 17) : 0;
+      const availableTableH = (!requirementMet && !virtuallyMetWithRegistered && availableCount > 0) ? (28 + availableCount * 17) : 0;
       const cardH = summaryH + progressH + descH + completedTableH + availableTableH + 60;
   
       // Page break if needed (no new heading!)
@@ -232,7 +269,7 @@ const PdfDownloadButton = ({ studentId }) => {
       // --- COMPLETED COURSES TABLE ---
       yCursor += 6;
       doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(128, 0, 0);
-      doc.text('Completed Courses', CARD_X + 18, yCursor);
+      doc.text('Enroled Courses', CARD_X + 18, yCursor);
       yCursor += 2;
       doc.autoTable({
         startY: yCursor + 2.5,
@@ -250,7 +287,7 @@ const PdfDownloadButton = ({ studentId }) => {
               c.year ?? '-',
               c.semester ?? '-',
               c.credits ?? '-',
-              (c.grade && String(c.grade).trim() !== '' ? c.grade : 'Registered')
+              ((String(c.promotion ?? '').toUpperCase() === 'R') || !(c.grade && String(c.grade).trim() !== '') ? 'Registered' : c.grade)
             ])
           : [[{ content: 'No courses completed yet', colSpan: 6, styles: { halign: 'center', fontStyle: 'italic', textColor: [136, 136, 136] } }]],
         theme: 'striped',
@@ -270,9 +307,18 @@ const PdfDownloadButton = ({ studentId }) => {
       doc.setFont('helvetica', 'normal').setFontSize(9.2);
       let infoText = "";
       if (requirementMet) {
-        infoText = "All requirements for this section are complete. Well done!";
+        infoText = "All requirements for this section are met. Well done!";
+      } else if (virtuallyMetWithRegistered) {
+        // Show registered course count, but pending credits should reflect remaining requirement
+        infoText = `${registeredCount} registered course(s) - ${remainingCredits} credit(s) pending. Complete them to meet the requirement.`;
       } else if (available.length > 0) {
-        infoText = `You need to complete ${remainingCourses} more course(s) and ${remainingCredits} more credits from the available list below.`;
+        if (registeredCount > 0) {
+          const remCoursesExcl = Math.max(0, remainingCourses - registeredCount);
+          const remCreditsExcl = Math.max(0, remainingCredits - registeredCredits);
+          infoText = `You need to complete ${remCoursesExcl} more course(s) and ${remCreditsExcl} more credit(s) excluding registered courses. \n See the available courses list below.`;
+        } else {
+          infoText = `You need to complete ${remainingCourses} more course(s) and ${remainingCredits} more credit(s). See the available courses list below.`;
+        }
       } else {
         infoText = "No available courses left to complete this requirement. Please consult your program coordinator.";
       }
@@ -284,7 +330,7 @@ const PdfDownloadButton = ({ studentId }) => {
       yCursor += 43;
   
       // --- AVAILABLE COURSES TABLE (now AFTER the info!) ---
-      if (!requirementMet && available.length > 0) {
+      if (!requirementMet && !virtuallyMetWithRegistered && available.length > 0) {
         doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(215, 138, 18);
         doc.text('Available (required) Courses', CARD_X + 18, yCursor + 2);
         doc.autoTable({
