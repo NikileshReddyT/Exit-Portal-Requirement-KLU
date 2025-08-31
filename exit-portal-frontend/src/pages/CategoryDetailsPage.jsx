@@ -18,6 +18,11 @@ const CourseCard = ({ course }) => {
     const cardBorder = isPromoted ? 'border-green-200' : 'border-red-200';
     const cardBg = isPromoted ? 'bg-white' : 'bg-rose-50';
 
+    const promoUpper = (course.promotion || '').toUpperCase();
+    const labelText = isPromoted
+        ? `Grade: ${course.grade ?? '-'}`
+        : (promoUpper === 'R' ? 'Registered' : `Promotion: ${course.promotion ?? '-'}`);
+
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -31,7 +36,7 @@ const CourseCard = ({ course }) => {
                     <p className="text-xs sm:text-sm text-gray-500 mt-1 font-mono">{course.courseCode}</p>
                 </div>
                 <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${badgeClass}`}>
-                    {isPromoted ? `Grade: ${course.grade ?? '-'}` : `Promotion: ${course.promotion ?? '-'}`}
+                    {labelText}
                 </span>
             </div>
         </motion.div>
