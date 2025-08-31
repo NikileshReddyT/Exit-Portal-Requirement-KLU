@@ -64,4 +64,46 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
 
     @Query("SELECT scp FROM StudentCategoryProgress scp WHERE scp.program.code = :programCode")
     List<StudentCategoryProgress> findByProgramCode(@Param("programCode") String programCode);
+
+    // ===== Optimized Aggregates for Dashboard (avoid loading large entity lists) =====
+    // Count students who have met ALL their category requirements within optional program scope.
+    @Query(value = "SELECT COUNT(*) FROM (\n" +
+            "  SELECT scp.university_id\n" +
+            "  FROM student_category_progress scp\n" +
+            "  WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  GROUP BY scp.university_id\n" +
+            "  HAVING SUM(\n" +
+            "    CASE\n" +
+            "      WHEN (COALESCE(scp.min_required_courses,0) > 0 AND COALESCE(scp.completed_courses,0) < scp.min_required_courses)\n" +
+            "        OR (COALESCE(scp.min_required_credits,0) > 0 AND COALESCE(scp.completed_credits,0) < scp.min_required_credits)\n" +
+            "      THEN 1 ELSE 0 END\n" +
+            "  ) = 0\n" +
+            ") t",
+            nativeQuery = true)
+    long countCompletedStudents(@Param("programId") Long programId);
+
+    // Category-level aggregates: total rows, met count, and average credit completion ratio (capped at 1.0)
+    @Query(value = "SELECT\n" +
+            "  scp.category_name AS categoryName,\n" +
+            "  COUNT(*) AS total,\n" +
+            "  SUM(CASE WHEN ( (COALESCE(scp.min_required_courses,0) <= 0 OR COALESCE(scp.completed_courses,0) >= scp.min_required_courses)\n" +
+            "              AND (COALESCE(scp.min_required_credits,0) <= 0 OR COALESCE(scp.completed_credits,0) >= scp.min_required_credits) )\n" +
+            "      THEN 1 ELSE 0 END) AS met,\n" +
+            "  AVG(\n" +
+            "    CASE WHEN COALESCE(scp.min_required_credits,0) > 0 THEN\n" +
+            "      LEAST(1.0, (COALESCE(scp.completed_credits,0) * 1.0) / NULLIF(scp.min_required_credits,0))\n" +
+            "    ELSE 0.0 END\n" +
+            "  ) AS avgCreditCompletion\n" +
+            "FROM student_category_progress scp\n" +
+            "WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "GROUP BY scp.category_name",
+            nativeQuery = true)
+    List<CategoryAggregate> aggregateByCategory(@Param("programId") Long programId);
+
+    interface CategoryAggregate {
+        String getCategoryName();
+        long getTotal();
+        long getMet();
+        double getAvgCreditCompletion();
+    }
 }

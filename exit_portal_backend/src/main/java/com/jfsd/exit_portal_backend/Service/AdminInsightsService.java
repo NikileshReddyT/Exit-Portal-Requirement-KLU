@@ -7,6 +7,7 @@ import com.jfsd.exit_portal_backend.Model.Program;
 import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
 import com.jfsd.exit_portal_backend.Repository.ProgramRepository;
 import com.jfsd.exit_portal_backend.Repository.StudentCategoryProgressRepository;
+import com.jfsd.exit_portal_backend.Repository.StudentCategoryProgressRepository.CategoryAggregate;
 import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
 import com.jfsd.exit_portal_backend.Repository.ProgramCourseCategoryRepository;
@@ -53,7 +54,6 @@ public class AdminInsightsService {
     private CoursesRepository coursesRepository;
 
     public Map<String, Object> buildDashboard(String userType, Long programId) {
-        System.out.println("AdminInsightsService.buildDashboard - userType: " + userType + ", programId: " + programId);
         Map<String, Object> dashboard = new LinkedHashMap<>();
         dashboard.put("userType", userType);
         dashboard.put("programId", programId);
@@ -66,54 +66,24 @@ public class AdminInsightsService {
                 programCode = p.get().getCode();
                 dashboard.put("programCode", programCode);
                 dashboard.put("programName", p.get().getName());
-                System.out.println("AdminInsightsService.buildDashboard - resolved program code: " + programCode);
             }
         }
 
-        // Collect progress rows within scope
-        List<StudentCategoryProgress> rows;
-        if ("SUPER_ADMIN".equalsIgnoreCase(userType) && programId != null) {
-            // SUPER_ADMIN with specific program - filter by program
-            rows = programCode != null ? progressRepository.findByProgramCode(programCode) : Collections.emptyList();
-            System.out.println("AdminInsightsService.buildDashboard - SUPER_ADMIN with programId, filtered rows: " + rows.size());
-        } else if ("SUPER_ADMIN".equalsIgnoreCase(userType)) {
-            // SUPER_ADMIN without program - show all data
-            rows = progressRepository.findAll();
-            System.out.println("AdminInsightsService.buildDashboard - SUPER_ADMIN without programId, all rows: " + rows.size());
-        } else if (programCode != null) {
-            // ADMIN - always filter by their assigned program
-            rows = progressRepository.findByProgramCode(programCode);
-            System.out.println("AdminInsightsService.buildDashboard - ADMIN with program code, filtered rows: " + rows.size());
-        } else {
-            rows = Collections.emptyList();
-            System.out.println("AdminInsightsService.buildDashboard - no program context, empty rows");
-        }
-
-        // Stats by student completion
-        Map<String, List<StudentCategoryProgress>> byStudent = rows.stream()
-                .collect(Collectors.groupingBy(StudentCategoryProgress::getUniversityId));
-
-        long completedStudents = byStudent.values().stream()
-                .filter(AdminInsightsService::isStudentComplete)
-                .count();
-        long totalStudentsInProgressTable = byStudent.size();
+        // Stats using optimized aggregates (avoid loading large progress tables)
+        long completedStudents = progressRepository.countCompletedStudents(programId);
 
         long totalStudents;
         if ("SUPER_ADMIN".equalsIgnoreCase(userType) && programId != null) {
             // SUPER_ADMIN with specific program - count students in that program
             totalStudents = studentRepository.countByProgram_ProgramId(programId);
-            System.out.println("AdminInsightsService.buildDashboard - SUPER_ADMIN with programId, totalStudents: " + totalStudents);
         } else if ("SUPER_ADMIN".equalsIgnoreCase(userType)) {
             // SUPER_ADMIN without program - count all students
             totalStudents = studentRepository.count();
-            System.out.println("AdminInsightsService.buildDashboard - SUPER_ADMIN without programId, totalStudents: " + totalStudents);
         } else if (programId != null) {
             // ADMIN - count students in their assigned program
             totalStudents = studentRepository.countByProgram_ProgramId(programId);
-            System.out.println("AdminInsightsService.buildDashboard - ADMIN with programId, totalStudents: " + totalStudents);
         } else {
-            totalStudents = totalStudentsInProgressTable;
-            System.out.println("AdminInsightsService.buildDashboard - fallback, totalStudents: " + totalStudents);
+            totalStudents = 0;
         }
 
         long inProgressStudents = Math.max(0, totalStudents - completedStudents);
@@ -124,23 +94,21 @@ public class AdminInsightsService {
         stats.put("inProgressStudents", inProgressStudents);
         dashboard.put("stats", stats);
 
-        // Category summaries within scope
-        Map<String, CategorySummary> categoryMap = new LinkedHashMap<>();
-        for (StudentCategoryProgress scp : rows) {
-            String cat = scp.getCategoryName();
-            if (cat == null) continue;
-            CategorySummary cs = categoryMap.computeIfAbsent(cat, k -> new CategorySummary());
-            cs.total++;
-            if (meetsRequirement(scp)) cs.met++;
-            double denom = scp.getMinRequiredCredits() != null && scp.getMinRequiredCredits() > 0 ? scp.getMinRequiredCredits() : 0.0;
-            double ratio = denom > 0 ? Math.min(1.0, (scp.getCompletedCredits() != null ? scp.getCompletedCredits() : 0.0) / denom) : 0.0;
-            cs.creditCompletionSum += ratio;
-        }
-
-        List<Map<String, Object>> categorySummaries = categoryMap.entrySet().stream()
-                .map(e -> e.getValue().toMap(e.getKey()))
-                .sorted(Comparator.comparing((Map<String, Object> m) -> (Double) m.get("metRate")))
-                .collect(Collectors.toList());
+        // Category summaries using aggregate query
+        List<CategoryAggregate> aggs = progressRepository.aggregateByCategory(programId);
+        List<Map<String, Object>> categorySummaries = aggs.stream().map(a -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("category", a.getCategoryName());
+            m.put("total", a.getTotal());
+            m.put("met", a.getMet());
+            double metRate = a.getTotal() > 0 ? ((double) a.getMet()) / ((double) a.getTotal()) : 0.0;
+            double avgCredit = a.getAvgCreditCompletion();
+            // round to 3 decimals to match previous behavior
+            m.put("metRate", Math.round(metRate * 1000.0) / 1000.0);
+            m.put("avgCreditCompletion", Math.round(avgCredit * 1000.0) / 1000.0);
+            return m;
+        }).sorted(Comparator.comparing((Map<String, Object> m) -> (Double) m.get("metRate")))
+          .collect(Collectors.toList());
         dashboard.put("categorySummaries", categorySummaries);
 
         // Bottlenecks: bottom 3 categories by metRate
@@ -300,10 +268,8 @@ public class AdminInsightsService {
     public List<Map<String, Object>> listStudents(Long programId) {
         List<Student> students;
         if (programId != null) {
-            // No derived query for list by program; filter in-memory from findAll() to avoid repo change
-            students = studentRepository.findAll().stream()
-                    .filter(s -> s.getProgram() != null && Objects.equals(s.getProgram().getProgramId(), programId))
-                    .collect(Collectors.toList());
+            // Use derived query to avoid loading all students when program is scoped
+            students = studentRepository.findByProgram_ProgramId(programId);
         } else {
             students = studentRepository.findAll();
         }
