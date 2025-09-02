@@ -80,26 +80,6 @@ const AdminGrades = () => {
           <h2 className="text-2xl font-bold text-gray-900">Grades</h2>
           <p className="text-sm text-gray-600">Server-side paginated view</p>
         </div>
-        <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          <input
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            placeholder="Filter by student ID"
-            className="w-full sm:w-72 border rounded px-3 py-2"
-          />
-          <input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Filter by category"
-            className="w-full sm:w-56 border rounded px-3 py-2"
-          />
-          <button
-            onClick={() => { setPage(0); load({ page: 0 }); }}
-            className="px-3 py-2 border rounded bg-white hover:bg-gray-50"
-          >
-            Apply
-          </button>
-        </div>
       </div>
 
       <DataTable
@@ -116,6 +96,7 @@ const AdminGrades = () => {
         emptyText={loading ? '' : (error || 'No grades found')}
         // UI enhancements
         enableSearch={false}
+        enableColumnFilters={false}
         enableColumnVisibility
         enableExport
         exportFileName="grades"

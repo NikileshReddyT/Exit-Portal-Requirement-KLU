@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import config from '../../config';
@@ -14,7 +14,7 @@ const AdminCourses = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
+  
   
   // Get programId from URL params or context
   const urlParams = new URLSearchParams(location.search);
@@ -54,11 +54,7 @@ const AdminCourses = () => {
     load();
   }, [user, navigate, programId]);
 
-  const filtered = useMemo(() => {
-    if (!query) return rows;
-    const q = query.toLowerCase();
-    return rows.filter(r => Object.values(r || {}).some(v => String(v ?? '').toLowerCase().includes(q)));
-  }, [rows, query]);
+  
 
   const handleRowClick = (row) => {
     const code = row.courseCode || row.code || row.CourseCode || row.id;
@@ -72,10 +68,17 @@ const AdminCourses = () => {
           <h2 className="text-2xl font-bold text-gray-900">Courses</h2>
           <p className="text-sm text-gray-600">Browse courses and drill into completion insights</p>
         </div>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search courses..." className="w-full sm:w-72 border rounded px-3 py-2" />
       </div>
 
-      <DataTable rows={filtered} onRowClick={handleRowClick} loading={loading} error={error} emptyText={loading ? '' : (error || 'No courses found')} />
+      <DataTable
+        rows={rows}
+        onRowClick={handleRowClick}
+        loading={loading}
+        error={error}
+        emptyText={loading ? '' : (error || 'No courses found')}
+        enableSearch={false}
+        enableColumnFilters={false}
+      />
     </div>
   );
 };

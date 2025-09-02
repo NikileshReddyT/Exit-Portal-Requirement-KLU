@@ -29,7 +29,7 @@ const DataTable = ({
   compact = false,
   // Enhancements
   enableSearch = true,
-  enableColumnFilters = false,
+  enableColumnFilters = true,
   enableColumnVisibility = true,
   enableExport = true,
   exportFileName = 'data',
@@ -65,11 +65,15 @@ const DataTable = ({
   const [columnFilters, setColumnFilters] = useState({});
   const [showFilters, setShowFilters] = useState(false);
   // Removed wrap toggle and column visibility menu per new spec
-
+  
   // Sync search input when defaultSearch prop changes (e.g., URL back/forward)
   useEffect(() => {
     setSearch(defaultSearch || '');
   }, [defaultSearch]);
+
+  // Controls visibility: force enabled across all tables irrespective of props
+  const showSearchControl = true;
+  const showFilterControl = true;
 
   // Apply client-side filtering (global search + per-column) when not server-side
   const effectiveRows = useMemo(() => {
@@ -282,13 +286,13 @@ const DataTable = ({
 
   return (
     <div className="space-y-4 w-full  lg:max-w-[90vw] max-h-[90vh]">
-      {(enableSearch || enableExport || enableColumnFilters) && (
+      {(showSearchControl || enableExport || showFilterControl) && (
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           {/* Left spacer (kept empty to push controls to the right) */}
           <div className="hidden md:block" />
           {/* Right controls: export then search (search on far right) */}
           <div className="flex items-center gap-2 md:ml-auto md:justify-end w-full">
-            {enableColumnFilters && (
+            {showFilterControl && (
               <button
                 type="button"
                 className={`px-3 py-2 border rounded text-sm hover:bg-gray-50 flex items-center gap-1 ${showFilters ? 'bg-gray-100' : ''}`}
@@ -317,7 +321,7 @@ const DataTable = ({
                 Export CSV
               </button>
             )}
-            {enableSearch && (
+            {showSearchControl && (
               <div className="relative w-full max-w-sm">
                 <input
                   type="text"
@@ -416,7 +420,7 @@ const DataTable = ({
                   </th>
                 ))}
               </tr>
-              {enableColumnFilters && showFilters && (
+              {showFilterControl && showFilters && (
                 <tr className="divide-x divide-gray-200 bg-gray-50">
                   {visibleColumns.map((col) => (
                     <th key={col.key} className="px-2 py-2">

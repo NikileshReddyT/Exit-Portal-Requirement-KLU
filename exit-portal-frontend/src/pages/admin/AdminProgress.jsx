@@ -75,15 +75,6 @@ const AdminProgress = () => {
             )}
           </p>
         </div>
-        <div className="w-full sm:w-auto flex items-center gap-2">
-          <input
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            placeholder="Filter by student ID"
-            className="w-full sm:w-72 border rounded px-3 py-2"
-          />
-          <button onClick={() => load()} className="px-3 py-2 border rounded bg-white hover:bg-gray-50">Apply</button>
-        </div>
       </div>
 
       {/* Selected student details */}
@@ -162,7 +153,8 @@ const AdminProgress = () => {
         loading={loading}
         error={error}
         emptyText={loading ? '' : (error || 'No progress data found')}
-        enableColumnFilters={true}
+        enableSearch={false}
+        enableColumnFilters={false}
       />
     </div>
   );
