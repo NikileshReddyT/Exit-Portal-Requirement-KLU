@@ -126,6 +126,38 @@ public class AdminInsightsController {
         return ResponseEntity.ok(adminInsightsService.getStats(effectiveProgramId));
     }
 
+    // ===== Overview Insights Endpoints =====
+    @GetMapping("/overview/risk")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getRisk(
+            @RequestParam(value = "programId", required = false) Long requestProgramId,
+            HttpServletRequest request) {
+        String jwt = getJwtFromCookie(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        Long userProgramId = jwtUtil.getProgramIdFromJwtToken(jwt);
+        Long effectiveProgramId = "SUPER_ADMIN".equals(userType) ? requestProgramId : userProgramId;
+        return ResponseEntity.ok(adminInsightsService.getRiskSummary(effectiveProgramId));
+    }
+
+    @GetMapping("/overview/courses/leaderboard")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getCourseLeaderboard(
+            @RequestParam(value = "programId", required = false) Long requestProgramId,
+            @RequestParam(value = "limit", defaultValue = "5") int limit,
+            HttpServletRequest request) {
+        String jwt = getJwtFromCookie(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        Long userProgramId = jwtUtil.getProgramIdFromJwtToken(jwt);
+        Long effectiveProgramId = "SUPER_ADMIN".equals(userType) ? requestProgramId : userProgramId;
+        return ResponseEntity.ok(adminInsightsService.getCoursePassLeaderboard(effectiveProgramId, Math.max(1, limit)));
+    }
+
     // ===== Data Explorer Endpoints =====
     @GetMapping("/data/students")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")

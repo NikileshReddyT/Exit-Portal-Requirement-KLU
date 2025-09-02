@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX } from 'react-icons/fi';
+import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX, FiUploadCloud } from 'react-icons/fi';
 
 const Breadcrumbs = ({ location, user }) => {
   const pathSegments = location.pathname.split('/').filter(Boolean);
@@ -26,7 +26,8 @@ const Breadcrumbs = ({ location, user }) => {
       'courses': 'Courses',
       'grades': 'Grades',
       'progress': 'Progress',
-      'users': 'Users'
+      'users': 'Users',
+      'upload': 'Data Upload'
     };
     
     for (let i = 1; i < pathSegments.length; i++) {
@@ -154,6 +155,7 @@ const AdminLayout = () => {
         { to: `${basePath}/courses`, label: 'Courses', icon: <FiBookOpen /> },
         { to: `${basePath}/grades`, label: 'Grades', icon: <FiEdit3 /> },
         { to: `${basePath}/progress`, label: 'Progress', icon: <FiTrendingUp /> },
+        { to: `${basePath}/upload`, label: 'Data Upload', icon: <FiUploadCloud /> },
       ],
     },
     {
@@ -314,8 +316,8 @@ const AdminLayout = () => {
             {/* Right: User details + Logout */}
             <div className="justify-self-end flex items-center gap-3">
               <div className="hidden md:flex flex-col items-end text-white/90 leading-snug">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{user?.name}</span>
+                <div className="flex items-center gap-2 p-4 gap-4">
+                  <span className="text-base font-medium">{user?.name}</span>
                   <span className="text-[11px] uppercase tracking-wide bg-white/15 text-white px-2 py-0.5 rounded-md">{roleLabel}</span>
                 </div>
               </div>

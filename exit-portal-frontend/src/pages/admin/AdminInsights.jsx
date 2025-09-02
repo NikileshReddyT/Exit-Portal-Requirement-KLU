@@ -5,6 +5,7 @@ import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import StatCard from '../../components/admin/StatCard';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Cell } from 'recharts';
 
 const SectionCard = ({ title, children, right }) => (
   <div className="bg-white rounded-lg shadow p-4 sm:p-6">
@@ -21,6 +22,35 @@ const ProgressBar = ({ value, className = '' }) => (
     <div className="h-2 bg-blue-600 rounded" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
   </div>
 );
+
+// Mini horizontal bar chart for category met% (compact, professional)
+const CategoryMiniBarChart = ({ data = [], height = 220 }) => {
+  const sorted = [...data]
+    .map((c) => ({ name: c.category, value: Math.round(Math.max(0, Math.min(1, c.metRate ?? 0)) * 100), rate: c.metRate ?? 0 }))
+    .sort((a, b) => b.value - a.value);
+  const color = (r) => `hsl(${Math.max(0, Math.min(120, Math.round(r * 120)))}, 70%, 45%)`;
+  const tf = (s) => (s && s.length > 18 ? `${s.slice(0, 18)}…` : s);
+  const rowH = 26;
+  const innerHeight = Math.max(160, Math.min(380, sorted.length * rowH + 40));
+  return (
+    <div className="w-full" style={{ height: height ?? innerHeight }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={sorted} layout="vertical" margin={{ top: 6, right: 16, bottom: 6, left: 6 }} barSize={16}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+          <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} tickFormatter={tf} />
+          <Tooltip formatter={(v) => [`${v}%`, 'Met Rate']} cursor={{ fill: 'rgba(59,130,246,0.08)' }} />
+          <Bar dataKey="value" radius={[4, 4, 4, 4]}>
+            {sorted.map((entry, idx) => (
+              <Cell key={`cell-${idx}`} fill={color(entry.rate)} />
+            ))}
+            <LabelList dataKey="value" position="right" formatter={(v) => `${v}%`} className="fill-gray-700 text-[10px]" />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
 
 const AdminInsights = () => {
   const { user } = useAuth();
@@ -184,35 +214,19 @@ const AdminInsights = () => {
       {/* Category performance */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SectionCard title="Top Categories by Met %" right={<button className="text-sm text-blue-700 hover:underline" onClick={() => navigate(`${basePath}/categories-summary${programId ? `?programId=${programId}` : ''}`)}>View All »</button>}>
-          <div className="space-y-3">
-            {topCats.map((c) => (
-              <div key={c.category} className="border rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium text-gray-900">{c.category}</div>
-                  <div className="text-sm text-gray-700">{Math.round((c.metRate || 0) * 100)}%</div>
-                </div>
-                <ProgressBar value={Math.round((c.metRate || 0) * 100)} className="mt-2" />
-                <div className="mt-1 text-xs text-gray-600">Avg credit completion: {Math.round((c.avgCreditCompletion || 0) * 100)}%</div>
-              </div>
-            ))}
-            {topCats.length === 0 && <div className="text-sm text-gray-500">No data</div>}
-          </div>
+          {topCats.length === 0 ? (
+            <div className="text-sm text-gray-500">No data</div>
+          ) : (
+            <CategoryMiniBarChart data={topCats} />
+          )}
         </SectionCard>
 
         <SectionCard title="Bottleneck Categories" right={<button className="text-sm text-blue-700 hover:underline" onClick={() => navigate(`${basePath}/categories-summary${programId ? `?programId=${programId}` : ''}`)}>Investigate »</button>}>
-          <div className="space-y-3">
-            {(dashboard?.bottlenecks || bottomCats).map((c, idx) => (
-              <div key={`${c.category}-${idx}`} className="border rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium text-gray-900">{c.category}</div>
-                  <div className="text-sm text-gray-700">{Math.round((c.metRate || 0) * 100)}%</div>
-                </div>
-                <ProgressBar value={Math.round((c.metRate || 0) * 100)} className="mt-2" />
-                <div className="mt-1 text-xs text-gray-600">Avg credit completion: {Math.round((c.avgCreditCompletion || 0) * 100)}%</div>
-              </div>
-            ))}
-            {(dashboard?.bottlenecks || []).length === 0 && <div className="text-sm text-gray-500">No data</div>}
-          </div>
+          {(dashboard?.bottlenecks || bottomCats).length === 0 ? (
+            <div className="text-sm text-gray-500">No data</div>
+          ) : (
+            <CategoryMiniBarChart data={(dashboard?.bottlenecks || bottomCats)} />
+          )}
         </SectionCard>
       </div>
 

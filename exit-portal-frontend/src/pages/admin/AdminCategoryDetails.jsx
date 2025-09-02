@@ -41,6 +41,14 @@ const AdminCategoryDetails = () => {
     load();
   }, [user, navigate, categoryName]);
 
+  // Navigate to course details on row click
+  const handleRowClick = (row) => {
+    const code = row?.courseCode || row?.code || row?.CourseCode || row?.id;
+    if (code) {
+      navigate(`/admin/courses/${encodeURIComponent(String(code))}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
@@ -53,7 +61,14 @@ const AdminCategoryDetails = () => {
 
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">Courses in this category</h3>
-        <DataTable rows={courses} loading={loading} error={error} emptyText={loading ? '' : (error || 'No courses found')} />
+        <DataTable 
+          rows={courses} 
+          onRowClick={handleRowClick}
+          cardTitleKey="courseName"
+          loading={loading} 
+          error={error} 
+          emptyText={loading ? '' : (error || 'No courses found')} 
+        />
       </div>
     </div>
   );

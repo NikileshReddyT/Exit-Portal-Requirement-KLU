@@ -118,6 +118,13 @@ public class AdminInsightsService {
                 .collect(Collectors.toList());
         dashboard.put("bottlenecks", bottlenecks);
 
+        // Risk summary & snapshots
+        dashboard.put("risk", getRiskSummary(programId));
+
+        // Course leaders/laggards by pass-rate
+        Map<String, Object> lb = getCoursePassLeaderboard(programId, 5);
+        dashboard.put("courseLeaderboard", lb);
+
         return dashboard;
     }
 
@@ -586,6 +593,86 @@ public class AdminInsightsService {
         private double round(double v) {
             return Math.round(v * 1000.0) / 1000.0; // 3 decimals
         }
+    }
+
+    // ===== Overview insights helpers =====
+    public Map<String, Object> getRiskSummary(Long programId) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        long exact0 = progressRepository.countCompletedStudents(programId);
+        long leq5 = progressRepository.countStudentsWithNotMetCategoriesAtMost(programId, 5);
+        long closeLeq5 = Math.max(0, leq5 - exact0); // students with 1..5 unmet categories
+        long nonPass = (programId != null)
+                ? studentGradeRepository.countDistinctStudentsWithAnyNonPassByProgram(programId)
+                : studentGradeRepository.countDistinctStudentsWithAnyNonPass();
+        m.put("exact0", exact0);
+        m.put("closeLeq5", closeLeq5);
+        m.put("nonPassAny", nonPass);
+        return m;
+    }
+
+    public List<Map<String, Object>> getCompletionTrend(Long programId) {
+        List<Object[]> rows = (programId != null)
+                ? studentGradeRepository.countPromotionsByTermAndProgram(programId)
+                : studentGradeRepository.countPromotionsByTerm();
+        return rows.stream().map(r -> {
+            String yr = String.valueOf(r[0]);
+            String sem = String.valueOf(r[1]);
+            long passCnt = ((Number) r[2]).longValue();
+            long totalCnt = ((Number) r[3]).longValue();
+            double passRate = totalCnt > 0 ? (double) passCnt / (double) totalCnt : 0.0;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("year", yr);
+            m.put("semester", sem);
+            m.put("passCnt", passCnt);
+            m.put("totalCnt", totalCnt);
+            m.put("passRate", Math.round(passRate * 1000.0) / 1000.0);
+            m.put("label", (yr != null ? yr : "NA") + "-" + (sem != null ? sem : "NA"));
+            return m;
+        }).sorted(Comparator
+                .comparing((Map<String, Object> e) -> String.valueOf(e.get("year")))
+                .thenComparing(e -> String.valueOf(e.get("semester"))))
+          .collect(Collectors.toList());
+    }
+
+    public Map<String, Object> getCoursePassLeaderboard(Long programId, int limit) {
+        List<Object[]> rows = (programId != null)
+                ? studentGradeRepository.aggregateCoursePassRatesByProgram(programId)
+                : studentGradeRepository.aggregateCoursePassRates();
+        List<Map<String, Object>> items = rows.stream().map(r -> {
+            String code = String.valueOf(r[0]);
+            long pass = ((Number) r[1]).longValue();
+            long total = ((Number) r[2]).longValue();
+            double rate = total > 0 ? (double) pass / (double) total : 0.0;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("courseCode", code);
+            m.put("passCnt", pass);
+            m.put("totalCnt", total);
+            m.put("passRate", Math.round(rate * 1000.0) / 1000.0);
+            return m;
+        }).sorted(Comparator.comparing((Map<String, Object> e) -> (Double) e.get("passRate"))).collect(Collectors.toList());
+
+        List<Map<String, Object>> laggards = items.stream().limit(Math.max(1, limit)).collect(Collectors.toList());
+        List<Map<String, Object>> leaders = items.stream().sorted(Comparator.comparing((Map<String, Object> e) -> (Double) e.get("passRate")).reversed())
+                .limit(Math.max(1, limit)).collect(Collectors.toList());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("leaders", leaders);
+        out.put("laggards", laggards);
+        return out;
+    }
+
+    public Map<String, Object> getDataFreshness(Long programId) {
+        Object[] r = (programId != null)
+                ? studentGradeRepository.findMaxYearAndSemesterByProgram(programId)
+                : studentGradeRepository.findMaxYearAndSemester();
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (r != null && r.length >= 2) {
+            m.put("latestYear", r[0]);
+            m.put("latestSemester", r[1]);
+        } else {
+            m.put("latestYear", null);
+            m.put("latestSemester", null);
+        }
+        return m;
     }
 
     // Students who met a given category (optionally scoped by program)

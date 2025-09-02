@@ -63,8 +63,8 @@ const DataTable = ({
   const [sortDir, setSortDir] = useState('asc');
   const [search, setSearch] = useState(defaultSearch || '');
   const [columnFilters, setColumnFilters] = useState({});
-  const [showColumnsMenu, setShowColumnsMenu] = useState(false);
-  const [wrapCells, setWrapCells] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  // Removed wrap toggle and column visibility menu per new spec
 
   // Sync search input when defaultSearch prop changes (e.g., URL back/forward)
   useEffect(() => {
@@ -136,6 +136,47 @@ const DataTable = ({
     } else {
       setSortKey(key);
       setSortDir('asc');
+    }
+  };
+
+  // Humanize headers: insert spaces for camelCase and underscores
+  const formatHeader = (value) => {
+    const raw = value == null ? '' : String(value);
+    // Replace camelCase boundaries and underscores with spaces
+    return raw.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+  };
+
+  // Compute unique values per column for dropdown filters
+  const uniqueValuesByColumn = useMemo(() => {
+    const map = {};
+    (inferredColumns || []).forEach((col) => {
+      const set = new Set();
+      (rows || []).forEach((r) => {
+        const v = r?.[col.key];
+        if (v != null && v !== '') set.add(String(v));
+      });
+      map[col.key] = Array.from(set).sort((a, b) => a.localeCompare(b));
+    });
+    return map;
+  }, [rows, inferredColumns]);
+
+  // Highlight helper for global search term
+  const highlightText = (text, term) => {
+    const value = text == null ? '' : String(text);
+    const t = (term || '').trim();
+    if (!t) return value;
+    try {
+      const regex = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig');
+      const parts = value.split(regex);
+      return parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-yellow-200 text-gray-900 px-0.5 rounded">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      );
+    } catch {
+      return value;
     }
   };
 
@@ -241,63 +282,30 @@ const DataTable = ({
 
   return (
     <div className="space-y-4 w-full  lg:max-w-[90vw] max-h-[90vh]">
-      {(enableSearch || enableColumnVisibility || enableExport) && (
+      {(enableSearch || enableExport || enableColumnFilters) && (
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          {/* Search */}
-          {enableSearch && (
-            <div className="relative max-w-sm">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSearch(val);
-                  if (onSearchChange) onSearchChange(val);
-                }}
-                placeholder={searchPlaceholder}
-                className="w-full border rounded px-3 py-2 pr-8 text-sm"
-              />
-              <span className="absolute right-2 top-2.5 text-gray-400">🔍</span>
-            </div>
-          )}
-          {/* Right controls */}
-          <div className="flex items-center gap-2">
-            {/* Wrap toggle: lets users see full content without ellipsis */}
-            <button
-              type="button"
-              className={`px-3 py-2 border rounded text-sm hover:bg-gray-50 ${wrapCells ? 'bg-gray-50' : ''}`}
-              onClick={() => setWrapCells((w) => !w)}
-              title={wrapCells ? 'Disable wrap' : 'Wrap long text'}
-            >
-              {wrapCells ? 'Unwrap' : 'Wrap'}
-            </button>
-            {enableColumnVisibility && (
-              <div className="relative">
-                <button
-                  type="button"
-                  className="px-3 py-2 border rounded text-sm hover:bg-gray-50"
-                  onClick={() => setShowColumnsMenu((s) => !s)}
+          {/* Left spacer (kept empty to push controls to the right) */}
+          <div className="hidden md:block" />
+          {/* Right controls: export then search (search on far right) */}
+          <div className="flex items-center gap-2 md:ml-auto md:justify-end w-full">
+            {enableColumnFilters && (
+              <button
+                type="button"
+                className={`px-3 py-2 border rounded text-sm hover:bg-gray-50 flex items-center gap-1 ${showFilters ? 'bg-gray-100' : ''}`}
+                onClick={() => setShowFilters((v) => !v)}
+                title={showFilters ? 'Hide column filters' : 'Show column filters'}
+              >
+                <svg
+                  className="w-4 h-4 text-white"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
                 >
-                  Columns
-                </button>
-                {showColumnsMenu && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white border rounded shadow z-20 max-h-64 overflow-auto">
-                    <div className="px-3 py-2 border-b text-xs text-gray-500">Toggle column visibility</div>
-                    {inferredColumns.map((c) => (
-                      <label key={c.key} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={colVisibility[c.key] !== false}
-                          onChange={(e) =>
-                            setColVisibility((prev) => ({ ...prev, [c.key]: e.target.checked }))
-                          }
-                        />
-                        <span className="truncate" title={String(c.header || c.key)}>{c.header || c.key}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  <path d="M3 5h18M6 12h12M10 19h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span>Filter</span>
+              </button>
             )}
             {enableExport && (
               <button
@@ -308,6 +316,31 @@ const DataTable = ({
               >
                 Export CSV
               </button>
+            )}
+            {enableSearch && (
+              <div className="relative w-full max-w-sm">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSearch(val);
+                    if (onSearchChange) onSearchChange(val);
+                  }}
+                  placeholder={searchPlaceholder}
+                  className="w-full border rounded pl-3 pr-8 py-2 text-sm"
+                />
+                <svg
+                  className="absolute right-2.5 top-2.5 w-4 h-4 text-gray-400 pointer-events-none"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+              </div>
             )}
           </div>
         </div>
@@ -338,11 +371,12 @@ const DataTable = ({
               )}
               <div className="space-y-2">
                 {mobileColumnsLimited.map((col) => {
-                  const value = col.render ? col.render(row[col.key], row) : String(row[col.key] ?? '');
+                  const valueRaw = col.render ? col.render(row[col.key], row) : row[col.key];
+                  const value = highlightText(valueRaw, search);
                   return (
                     <div key={col.key} className="flex justify-between items-start">
                       <span className="text-xs font-medium text-gray-500 uppercase tracking-wide flex-shrink-0 mr-3">
-                        {col.header}
+                        {formatHeader(col.header ?? col.key)}
                       </span>
                       <span className="text-sm text-gray-900 text-right break-words">
                         {value}
@@ -368,11 +402,11 @@ const DataTable = ({
                     className={`px-3 py-4 text-left text-xs font-black bg-red-900 text-white uppercase tracking-wider whitespace-nowrap ${col.width ? col.width : 'min-w-[120px]'}`}
                   >
                     <div
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors cursor-pointer select-none min-w-0"
+                      className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer select-none min-w-0"
                       onClick={() => handleHeaderClick(col.key)}
                       title="Click to sort"
                     >
-                      <span className="truncate">{col.header}</span>
+                      <span className="truncate">{formatHeader(col.header ?? col.key)}</span>
                       {!serverSide && sortKey === col.key && (
                         <span className="text-blue-500 text-xs flex-shrink-0">
                           {sortDir === 'asc' ? '↑' : '↓'}
@@ -382,17 +416,20 @@ const DataTable = ({
                   </th>
                 ))}
               </tr>
-              {enableColumnFilters && (
+              {enableColumnFilters && showFilters && (
                 <tr className="divide-x divide-gray-200 bg-gray-50">
                   {visibleColumns.map((col) => (
                     <th key={col.key} className="px-2 py-2">
-                      <input
-                        type="text"
+                      <select
                         value={columnFilters[col.key] || ''}
                         onChange={(e) => setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }))}
-                        placeholder={`Filter ${col.header || col.key}`}
-                        className="w-full border rounded px-2 py-1 text-xs"
-                      />
+                        className="w-full border rounded px-2 py-1 text-xs bg-white"
+                      >
+                        <option value="">All</option>
+                        {(uniqueValuesByColumn[col.key] || []).map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
                     </th>
                   ))}
                 </tr>
@@ -410,21 +447,16 @@ const DataTable = ({
                     onClick={clickable ? () => onRowClick(row) : undefined}
                   >
                     {visibleColumns.map((col) => {
-                      const value = col.render ? col.render(row[col.key], row) : String(row[col.key] ?? '');
+                      const valueRaw = col.render ? col.render(row[col.key], row) : row[col.key];
+                      const value = highlightText(valueRaw, search);
                       return (
                         <td 
                           key={col.key} 
-                          className={`px-3 text-sm text-gray-700 ${compact ? 'py-2' : 'py-3'} ${col.className || ''} ${wrapCells ? 'align-top' : ''} max-w-[260px]`}
+                          className={`px-3 text-sm text-gray-700 ${compact ? 'py-2' : 'py-3'} ${col.className || ''} max-w-[260px]`}
                         >
-                          {wrapCells ? (
-                            <div className="whitespace-normal break-words leading-snug" title={String(value)}>
-                              {value}
-                            </div>
-                          ) : (
-                            <div className="truncate" title={String(value)}>
-                              {value}
-                            </div>
-                          )}
+                          <div className="truncate" title={String(typeof valueRaw === 'string' ? valueRaw : '')}>
+                            {value}
+                          </div>
                         </td>
                       );
                     })}

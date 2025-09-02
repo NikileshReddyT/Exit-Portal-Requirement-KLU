@@ -4,6 +4,7 @@ import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import DataTable from '../../components/admin/DataTable';
+import { FiUsers, FiTrendingUp } from 'react-icons/fi';
 
 const AdminCourseDetails = () => {
   const { user } = useAuth();
@@ -69,9 +70,9 @@ const AdminCourseDetails = () => {
     const fmtPct = (n) => total > 0 ? ((n * 100) / total).toFixed(1) + '%' : '0%';
     const sorted = [...data].sort((a,b) => Number(b.count||0) - Number(a.count||0));
     return (
-      <div className="bg-white rounded-lg shadow p-4">
+      <div className="bg-white rounded-lg shadow p-4 border border-red-100">
         <div className="flex items-center justify-between mb-2">
-          <h4 className="font-semibold text-gray-900">{title}</h4>
+          <h4 className="font-semibold text-red-900">{title}</h4>
           <span className="text-sm text-gray-500">Total: {total}</span>
         </div>
         {sorted.length === 0 ? (
@@ -87,7 +88,7 @@ const AdminCourseDetails = () => {
                   <div className="w-12 text-xs font-medium text-gray-700 text-right">{label}</div>
                   <div className="flex-1">
                     <div className="h-3 bg-gray-100 rounded">
-                      <div className="h-3 bg-indigo-500 rounded" style={{ width: `${width}%` }} />
+                      <div className="h-3 bg-red-500 rounded" style={{ width: `${width}%` }} />
                     </div>
                   </div>
                   <div className="w-28 text-xs text-gray-600 text-right">
@@ -119,14 +120,20 @@ const AdminCourseDetails = () => {
 
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-lg font-semibold text-gray-900">Course Stats</h3>
+          <div className="flex items-center gap-2">
+            <FiTrendingUp className="h-5 w-5 text-red-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Course Stats</h3>
+          </div>
           {statsLoading && <span className="text-sm text-gray-500">Loading…</span>}
           {statsError && <span className="text-sm text-red-600">{statsError}</span>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow p-4 flex flex-col justify-center items-center">
-            <div className="text-sm text-gray-500">Registered Students</div>
-            <div className="text-3xl font-bold text-gray-900">{stats?.registeredCount ?? (statsLoading ? '—' : 0)}</div>
+          <div className="bg-red-50 rounded-lg shadow p-4 flex flex-col justify-center items-center border border-red-100">
+            <div className="flex items-center gap-2 text-sm text-red-700">
+              <FiUsers className="h-4 w-4" />
+              <span>Registered Students</span>
+            </div>
+            <div className="text-3xl font-bold text-red-900">{stats?.registeredCount ?? (statsLoading ? '—' : 0)}</div>
           </div>
           <GradeBarList title="Grade Distribution" items={stats?.gradeCounts} itemKey="grade" />
           <GradeBarList title="Promotion Distribution" items={stats?.promotionCounts} itemKey="promotion" />

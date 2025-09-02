@@ -19,6 +19,7 @@ const AdminCategoriesSummary = () => {
   const urlParams = new URLSearchParams(location.search);
   const urlProgramId = urlParams.get('programId');
   const programId = selectedProgramId || urlProgramId;
+  const studentIdParam = urlParams.get('studentId') || '';
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
@@ -84,7 +85,15 @@ const AdminCategoriesSummary = () => {
           emptyText={loading ? '' : (error || 'No categories found')}
           onRowClick={(row) => {
             const name = row.category;
-            if (name) navigate(`${basePath}/categories-summary/${encodeURIComponent(String(name))}${programId ? `?programId=${programId}` : ''}`);
+            if (!name) return;
+            const qp = programId ? `?programId=${programId}` : '';
+            if (studentIdParam) {
+              // If a student is pre-selected, go straight to that student's courses for the category
+              navigate(`${basePath}/categories-summary/${encodeURIComponent(String(name))}/students/${encodeURIComponent(String(studentIdParam))}${qp}`);
+            } else {
+              // Otherwise, open the category students list
+              navigate(`${basePath}/categories-summary/${encodeURIComponent(String(name))}${qp}`);
+            }
           }}
           cardTitleKey="category"
         />

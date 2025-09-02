@@ -84,4 +84,50 @@ public interface StudentGradeRepository extends JpaRepository<StudentGrade, Long
 
     @Query("SELECT COUNT(DISTINCT sg.student.studentId) FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p WHERE LOWER(c.courseCode) = LOWER(:courseCode) AND p.programId = :programId")
     long countDistinctStudentsByCourseAndProgram(@Param("courseCode") String courseCode, @Param("programId") Long programId);
+
+    // ===== Term-wise promotion counts (for trend charts) =====
+    @Query("SELECT COALESCE(sg.year,'NA') AS yr, COALESCE(sg.semester,'NA') AS sem,\n" +
+           "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +
+           "       COUNT(sg) AS totalCnt\n" +
+           "FROM StudentGrade sg\n" +
+           "GROUP BY COALESCE(sg.year,'NA'), COALESCE(sg.semester,'NA')")
+    List<Object[]> countPromotionsByTerm();
+
+    @Query("SELECT COALESCE(sg.year,'NA') AS yr, COALESCE(sg.semester,'NA') AS sem,\n" +
+           "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +
+           "       COUNT(sg) AS totalCnt\n" +
+           "FROM StudentGrade sg JOIN sg.student s JOIN s.program p\n" +
+           "WHERE p.programId = :programId\n" +
+           "GROUP BY COALESCE(sg.year,'NA'), COALESCE(sg.semester,'NA')")
+    List<Object[]> countPromotionsByTermAndProgram(@Param("programId") Long programId);
+
+    // ===== Course-level pass rates =====
+    @Query("SELECT LOWER(c.courseCode) AS code,\n" +
+           "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +
+           "       COUNT(sg) AS totalCnt\n" +
+           "FROM StudentGrade sg JOIN sg.course c\n" +
+           "GROUP BY LOWER(c.courseCode)")
+    List<Object[]> aggregateCoursePassRates();
+
+    @Query("SELECT LOWER(c.courseCode) AS code,\n" +
+           "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +
+           "       COUNT(sg) AS totalCnt\n" +
+           "FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p\n" +
+           "WHERE p.programId = :programId\n" +
+           "GROUP BY LOWER(c.courseCode)")
+    List<Object[]> aggregateCoursePassRatesByProgram(@Param("programId") Long programId);
+
+    // ===== Distinct student counts with any non-pass promotions (risk indicator) =====
+    @Query("SELECT COUNT(DISTINCT sg.student.studentId) FROM StudentGrade sg WHERE UPPER(COALESCE(sg.promotion,'NA')) <> 'P'")
+    long countDistinctStudentsWithAnyNonPass();
+
+    @Query("SELECT COUNT(DISTINCT sg.student.studentId) FROM StudentGrade sg JOIN sg.student s JOIN s.program p WHERE UPPER(COALESCE(sg.promotion,'NA')) <> 'P' AND p.programId = :programId")
+    long countDistinctStudentsWithAnyNonPassByProgram(@Param("programId") Long programId);
+
+    // ===== Latest term (data freshness hint) =====
+    @Query("SELECT MAX(COALESCE(sg.year,'NA')), MAX(COALESCE(sg.semester,'NA')) FROM StudentGrade sg")
+    Object[] findMaxYearAndSemester();
+
+    @Query("SELECT MAX(COALESCE(sg.year,'NA')), MAX(COALESCE(sg.semester,'NA')) FROM StudentGrade sg JOIN sg.student s JOIN s.program p WHERE p.programId = :programId")
+    Object[] findMaxYearAndSemesterByProgram(@Param("programId") Long programId);
 }

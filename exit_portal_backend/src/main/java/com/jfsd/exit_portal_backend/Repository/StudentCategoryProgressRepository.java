@@ -122,4 +122,32 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
         String getUniversityId();
         String getStudentName();
     }
+
+    // Count students whose number of unmet categories equals a specific value (e.g., 1 for "close to completion")
+    @Query(value = "SELECT COUNT(*) FROM (\n" +
+            "  SELECT scp.university_id,\n" +
+            "         SUM(CASE WHEN ( (COALESCE(scp.min_required_courses,0) <= 0 OR COALESCE(scp.completed_courses,0) >= scp.min_required_courses)\n" +
+            "                       AND (COALESCE(scp.min_required_credits,0) <= 0 OR COALESCE(scp.completed_credits,0) >= scp.min_required_credits) )\n" +
+            "                  THEN 0 ELSE 1 END) AS notMetCnt\n" +
+            "  FROM student_category_progress scp\n" +
+            "  WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  GROUP BY scp.university_id\n" +
+            ") t\n" +
+            "WHERE t.notMetCnt = :k",
+            nativeQuery = true)
+    long countStudentsWithNotMetCategories(@Param("programId") Long programId, @Param("k") int k);
+
+    // Count students whose number of unmet categories is at most K (<= K)
+    @Query(value = "SELECT COUNT(*) FROM (\n" +
+            "  SELECT scp.university_id,\n" +
+            "         SUM(CASE WHEN ( (COALESCE(scp.min_required_courses,0) <= 0 OR COALESCE(scp.completed_courses,0) >= scp.min_required_courses)\n" +
+            "                       AND (COALESCE(scp.min_required_credits,0) <= 0 OR COALESCE(scp.completed_credits,0) >= scp.min_required_credits) )\n" +
+            "                  THEN 0 ELSE 1 END) AS notMetCnt\n" +
+            "  FROM student_category_progress scp\n" +
+            "  WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  GROUP BY scp.university_id\n" +
+            ") t\n" +
+            "WHERE t.notMetCnt <= :k",
+            nativeQuery = true)
+    long countStudentsWithNotMetCategoriesAtMost(@Param("programId") Long programId, @Param("k") int k);
 }

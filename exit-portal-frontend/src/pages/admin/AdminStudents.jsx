@@ -25,6 +25,9 @@ const AdminStudents = () => {
   const urlProgramId = urlParams.get('programId');
   const programId = selectedProgramId || urlProgramId;
 
+  // Resolve base path for admin vs superadmin
+  const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
+
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
       navigate('/login');
@@ -137,13 +140,18 @@ const AdminStudents = () => {
             <div className="flex gap-2 flex-wrap">
               <button
                 className="px-4 py-2 rounded-lg bg-red-900 text-white hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-900 shadow-sm"
-                onClick={() => navigate(`/admin/students/${encodeURIComponent(selected.id)}`)}
+                onClick={() => navigate(`${basePath}/students/${encodeURIComponent(selected.id)}`)}
               >
                 By Courses
               </button>
               <button
                 className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300"
-                onClick={() => navigate(`/admin/grades?studentId=${encodeURIComponent(selected.id)}`)}
+                onClick={() => {
+                  const qp = programId
+                    ? `?studentId=${encodeURIComponent(selected.id)}&programId=${encodeURIComponent(String(programId))}`
+                    : `?studentId=${encodeURIComponent(selected.id)}`;
+                  navigate(`${basePath}/progress${qp}`);
+                }}
               >
                 By Category
               </button>

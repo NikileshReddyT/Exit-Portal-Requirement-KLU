@@ -4,13 +4,95 @@ import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
-import StatCard from '../../components/admin/StatCard';
+import { FiTrendingDown, FiUsers, FiAlertTriangle, FiAward, FiTarget, FiChevronDown } from 'react-icons/fi';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Cell } from 'recharts';
 
+// Reusable quick link button
 const QuickLink = ({ to, label, onClick }) => (
   <button onClick={onClick} className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 shadow-sm">
     {label}
   </button>
 );
+
+// Responsive horizontal bar chart for category met rate (0-100%)
+// Dark neon style with rounded bars and glow
+const CategoryPerformanceChart = ({ data = [] }) => {
+  const sorted = [...data]
+    .map((c) => ({ name: c.category, value: Math.round(Math.max(0, Math.min(1, c.metRate ?? 0)) * 100), rate: c.metRate ?? 0 }))
+    .sort((a, b) => b.value - a.value);
+  const neon = (r) => `hsl(${Math.max(0, Math.min(130, Math.round(r * 130)))}, 95%, 55%)`;
+  const tf = (s) => (s && s.length > 26 ? `${s.slice(0, 26)}…` : s);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const rowH = isMobile ? 22 : 24;
+  const innerHeight = Math.max(200, Math.min(900, sorted.length * rowH + 60));
+
+  const NeonBar = (props) => {
+    const { x, y, width, height, fill } = props;
+    const w = Math.max(0, width);
+    return (
+      <g>
+        <rect x={x} y={y} width={w} height={height} rx={9} ry={9} fill={fill} filter="url(#glow)" />
+      </g>
+    );
+  };
+
+  return (
+    <div className="w-full">
+      <div style={{ height: innerHeight, minWidth: 280 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={sorted} layout="vertical" margin={{ top: 12, right: (isMobile ? 56 : 72), bottom: 12, left: 12 }} barSize={isMobile ? 5 : 6}>
+            <defs>
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4.5" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <CartesianGrid horizontal={false} stroke="rgba(15,23,42,0.06)" />
+            <XAxis
+              type="number"
+              domain={[0, 100]}
+              tickFormatter={(v) => `${v}%`}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#334155', fontSize: 12 }}
+            />
+            <YAxis
+              type="category"
+              dataKey="name"
+              width={isMobile ? 140 : 220}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#334155', fontSize: isMobile ? 11 : 12 }}
+              tickFormatter={tf}
+            />
+            <Tooltip
+              formatter={(v) => [`${v}%`, 'Met rate']}
+              cursor={{ fill: 'rgba(239, 68, 68, 0.08)' }}
+              contentStyle={{ background: '#ffffff', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, color: '#0f172a' }}
+              labelStyle={{ color: '#334155' }}
+              itemStyle={{ color: '#0f172a' }}
+            />
+            <Bar dataKey="value" shape={<NeonBar />} background={{ fill: 'rgba(148,163,184,0.15)', radius: [9, 9, 9, 9] }}>
+              {sorted.map((entry, idx) => (
+                <Cell key={`cell-${idx}`} fill={neon(entry.rate)} />
+              ))}
+              <LabelList dataKey="value" position="right" offset={isMobile ? 4 : 8} formatter={(v) => `${v}%`} fill="#334155" fontSize={isMobile ? 10 : 11} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
 
 const AdminOverview = () => {
   const { user } = useAuth();
@@ -20,6 +102,11 @@ const AdminOverview = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
+  const [insights, setInsights] = useState({
+    risk: null,
+    courseLeaderboard: null,
+  });
+  const [showCat, setShowCat] = useState(false);
   
   // Use program context or URL params
   const urlParams = new URLSearchParams(location.search);
@@ -61,6 +148,24 @@ const AdminOverview = () => {
         if (isCancelled) return; // Prevent state update if component unmounted or effect cancelled
         
         setData(res.data || {});
+        
+        // Fetch overview insights
+        const insightPromises = [
+          axios.get(`${config.backendUrl}/api/v1/admin/overview/risk${effectiveProgramId ? `?programId=${effectiveProgramId}` : ''}`, { withCredentials: true }),
+          axios.get(`${config.backendUrl}/api/v1/admin/overview/courses/leaderboard?limit=5${effectiveProgramId ? `&programId=${effectiveProgramId}` : ''}`, { withCredentials: true }),
+        ];
+        
+        try {
+          const [riskRes, leaderboardRes] = await Promise.all(insightPromises);
+          if (!isCancelled) {
+            setInsights({
+              risk: riskRes.data,
+              courseLeaderboard: leaderboardRes.data,
+            });
+          }
+        } catch (insightErr) {
+          console.error('Failed to load insights:', insightErr);
+        }
         
         // Fetch program details if we have an effective program ID and don't have current program info
         if (effectiveProgramId && (!programInfo || programInfo.programId != effectiveProgramId)) {
@@ -111,6 +216,8 @@ const AdminOverview = () => {
   // Determine base path for navigation
   const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
+  const totalStudents = data?.stats?.totalStudents ?? 0;
+  const catSummaries = Array.isArray(data?.categorySummaries) ? data.categorySummaries : [];
   
   return (
     <div className="space-y-8 min-h-full">
@@ -118,32 +225,137 @@ const AdminOverview = () => {
       
       <div>
         <h2 className="text-2xl font-bold text-gray-900">
-          {programInfo ? `${programInfo.code} - Overview` : 'Overview'}
+          {programInfo ? `${programInfo.code} - Overview` : 'Overview'} {totalStudents > 0 && `( ${totalStudents} students )`}
         </h2>
         <p className="text-sm text-gray-600">
           {programInfo ? `Program-specific snapshot and navigation` : `${user?.programName ? user.programName + ' - ' : ''}Program snapshot and quick navigation`}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 items-stretch">
-        <StatCard title="Students" value={data?.stats?.totalStudents} color="blue" subtitle="Total enrolled" />
-        <StatCard title="Completed" value={data?.stats?.completedStudents} color="green" subtitle="Met requirements" />
-        <StatCard title="In Progress" value={data?.stats?.inProgressStudents} color="yellow" subtitle="Tracking to complete" />
-        {/* <StatCard title="Categories" value={data?.stats?.totalCategories} color="purple" subtitle="Available" /> */}
-      </div>
-
-   
-
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Upload</h3>
-        <div className="-mx-1 overflow-x-auto sm:overflow-visible">
-          <div className="px-1 flex gap-2 sm:gap-3 flex-nowrap sm:flex-wrap flex-col md:flex-row">
-            <QuickLink label="Category & Course Upload" onClick={() => navigate(`${basePath}/upload/combined${programCode ? `?programCode=${encodeURIComponent(programCode)}` : ''}`)} />
-            <QuickLink label="Student Result Upload" onClick={() => navigate(`${basePath}/upload/results${programCode ? `?programCode=${encodeURIComponent(programCode)}` : ''}`)} />
-            <QuickLink label="Registration Upload" onClick={() => navigate(`${basePath}/upload/registrations${programCode ? `?programCode=${encodeURIComponent(programCode)}` : ''}`)} />
+      {/* Risk Summary */}
+      {insights?.risk && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-start gap-2 mb-4">
+            <div className="flex items-center gap-2 ">
+              <FiAlertTriangle className="h-5 w-5 text-orange-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Risk Summary</h3>
+            </div>
+            <div className="text-lg text-gray-700">
+              for <span className="font-semibold">{totalStudents}</span> students
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <FiTarget className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-green-800">All Requirements Met</span>
+              </div>
+              <div className="text-2xl font-bold text-green-900 mt-1">{insights.risk.exact0}</div>
+              <div className="text-xs text-green-700">Students completed</div>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <FiUsers className="h-4 w-4 text-yellow-600" />
+                <span className="text-sm font-medium text-yellow-800">Close to Completion</span>
+              </div>
+              <div className="text-2xl font-bold text-yellow-900 mt-1">{insights.risk.closeLeq5}</div>
+              <div className="text-xs text-yellow-700">≤ 5 categories remaining</div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <FiAlertTriangle className="h-4 w-4 text-red-600" />
+                <span className="text-sm font-medium text-red-800">At Risk</span>
+              </div>
+              <div className="text-2xl font-bold text-red-900 mt-1">{insights.risk.nonPassAny}</div>
+              <div className="text-xs text-red-700">With non-pass grades</div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Category Completion (Met rate by category) */}
+      {catSummaries.length > 0 && (
+        <div className="bg-red-50 rounded-lg shadow p-4 sm:p-6 border border-red-100">
+          <div
+            className="flex items-center justify-between mb-2 sm:mb-4 cursor-pointer select-none"
+            onClick={() => setShowCat((v) => !v)}
+            aria-expanded={showCat}
+            role="button"
+          >
+            <div className="flex items-center gap-2">
+              <FiAward className="h-5 w-5 text-red-600" />
+              <h3 className="text-lg font-semibold text-red-900">Category Completion</h3>
+            </div>
+            <div className="flex items-center gap-2 text-red-700">
+              <span className="hidden sm:inline text-xs">
+                {showCat ? 'Hide' : 'Click to view category completion rates'}
+              </span>
+              <FiChevronDown className={`h-5 w-5 transition-transform ${showCat ? 'rotate-180' : ''}`} />
+            </div>
+          </div>
+          {!showCat && (
+            <div className="text-xs sm:text-sm text-red-700/80 bg-red-100/60 border border-red-200 rounded-md px-3 py-2 text-center">
+              Click to view category completion rates
+            </div>
+          )}
+          {showCat && (
+            <div className="mt-3 sm:mt-4">
+              <CategoryPerformanceChart data={catSummaries} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Course Leaderboard */}
+      {insights?.courseLeaderboard && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Performers */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FiAward className="h-5 w-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Top Performing Courses</h3>
+            </div>
+            <div className="space-y-3">
+              {insights.courseLeaderboard.leaders?.slice(0, 5).map((course, idx) => (
+                <div key={course.courseCode} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <div>
+                    <div className="font-medium text-gray-900">{(course.courseCode || '').toUpperCase()}</div>
+                    <div className="text-sm text-gray-600">{course.passCnt}/{course.totalCnt} students</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-green-700">{(course.passRate * 100).toFixed(1)}%</div>
+                    <div className="text-xs text-gray-500">#{idx + 1}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom Performers */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FiTrendingDown className="h-5 w-5 text-red-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Courses Needing Attention</h3>
+            </div>
+            <div className="space-y-3">
+              {insights.courseLeaderboard.laggards?.slice(0, 5).map((course, idx) => (
+                <div key={course.courseCode} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                  <div>
+                    <div className="font-medium text-gray-900">{(course.courseCode || '').toUpperCase()}</div>
+                    <div className="text-sm text-gray-600">{course.passCnt}/{course.totalCnt} students</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-red-700">{(course.passRate * 100).toFixed(1)}%</div>
+                    <div className="text-xs text-gray-500">#{idx + 1}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      
 
       {Array.isArray(data?.bottlenecks) && data.bottlenecks.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6">
