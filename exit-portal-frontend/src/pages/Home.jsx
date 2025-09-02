@@ -108,7 +108,7 @@ const Home = () => {
                         >
                             <Link to="/login">
                                 <button className="bg-red-600 text-white font-bold text-lg py-4 px-8 rounded-full shadow-lg hover:bg-red-700 transform hover:scale-105 transition-all duration-300 ease-in-out flex items-center gap-2 mx-auto">
-                                    Login <FiArrowRight />
+                                    Get Started <FiArrowRight />
                                 </button>
                             </Link>
                         </motion.div>
