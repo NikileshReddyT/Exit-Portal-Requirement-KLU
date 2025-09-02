@@ -107,14 +107,29 @@ const AdminProgress = () => {
         columns={useMemo(() => {
           if (!rows || rows.length === 0) return undefined;
           const excluded = new Set([
+            // generic ids and student/program meta
             'id', 'ID', 'Id',
             'studentId', 'StudentId', 'studentID', 'StudentID',
             'studentName', 'StudentName',
             'programId', 'ProgramId', 'programID', 'ProgramID',
             'programName', 'ProgramName',
-            'programCode', 'ProgramCode'
+            'programCode', 'ProgramCode',
+            // category/course/mapping/requirement/university id variants
+            'categoryId', 'CategoryId', 'categoryID', 'CategoryID', 'category_id',
+            'courseId', 'CourseId', 'courseID', 'CourseID', 'course_id',
+            'requirementId', 'RequirementId', 'requirementID', 'RequirementID', 'requirement_id',
+            'mappingId', 'MappingId', 'mappingID', 'MappingID', 'mapping_id',
+            'universityId', 'UniversityId', 'universityID', 'UniversityID', 'university_id',
           ]);
-          const allKeys = Object.keys(rows[0]).filter((k) => !excluded.has(k));
+          const isIdLike = (key) => {
+            // Keep camelCase explicit endings; avoid catching words like 'grid'
+            if (key.endsWith('Id') || key.endsWith('ID')) return true;
+            // snake_case ids
+            const lk = key.toLowerCase();
+            if (lk.endsWith('_id')) return true;
+            return false;
+          };
+          const allKeys = Object.keys(rows[0]).filter((k) => !excluded.has(k) && !isIdLike(k));
           const lowerToActual = new Map(allKeys.map((k) => [k.toLowerCase(), k]));
           const pick = (aliases) => {
             for (const a of aliases) {
