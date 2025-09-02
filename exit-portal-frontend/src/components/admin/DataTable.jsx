@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Pagination from './Pagination';
 
 // Modern, mobile-first data table with card view and optional server-side pagination
@@ -27,6 +27,15 @@ const DataTable = ({
   onRowClick,
   cardTitleKey,
   compact = false,
+  // Enhancements
+  enableSearch = true,
+  enableColumnFilters = false,
+  enableColumnVisibility = true,
+  enableExport = true,
+  exportFileName = 'data',
+  searchPlaceholder = 'Search...',
+  defaultSearch = '',
+  onSearchChange,
 }) => {
   const inferredColumns = useMemo(() => {
     if (Array.isArray(columns) && columns.length) return columns;
@@ -35,19 +44,62 @@ const DataTable = ({
     return Object.keys(first).map((k) => ({ key: k, header: k }));
   }, [columns, rows]);
 
-  const mobileColumns = useMemo(() => inferredColumns.filter((c) => !c.mobileHide), [inferredColumns]);
-  const mobileColumnsLimited = useMemo(() => mobileColumns.slice(0, 4), [mobileColumns]);
+  // Column visibility controls
+  const [colVisibility, setColVisibility] = useState({});
+  const visibleColumns = useMemo(
+    () => inferredColumns.filter((c) => colVisibility[c.key] !== false),
+    [inferredColumns, colVisibility]
+  );
+
+  // Mobile columns (respect visibility)
+  const mobileColumns = useMemo(() => visibleColumns.filter((c) => !c.mobileHide), [visibleColumns]);
+  // Show all visible columns on mobile for completeness
+  const mobileColumnsLimited = useMemo(() => mobileColumns, [mobileColumns]);
 
   // client-side pagination & sorting
   const [clientPage, setClientPage] = useState(0);
   const [clientSize, setClientSize] = useState(25);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
+  const [search, setSearch] = useState(defaultSearch || '');
+  const [columnFilters, setColumnFilters] = useState({});
+  const [showColumnsMenu, setShowColumnsMenu] = useState(false);
+  const [wrapCells, setWrapCells] = useState(false);
+
+  // Sync search input when defaultSearch prop changes (e.g., URL back/forward)
+  useEffect(() => {
+    setSearch(defaultSearch || '');
+  }, [defaultSearch]);
+
+  // Apply client-side filtering (global search + per-column) when not server-side
+  const effectiveRows = useMemo(() => {
+    if (!rows) return [];
+    if (serverSide) return rows;
+    const s = (search || '').trim().toLowerCase();
+    const hasSearch = !!s;
+    const activeFilters = columnFilters || {};
+    return rows.filter((row) => {
+      // Per-column filters (contains, case-insensitive)
+      for (const [k, val] of Object.entries(activeFilters)) {
+        if (!val) continue;
+        const cell = row?.[k];
+        const cellStr = cell == null ? '' : String(cell).toLowerCase();
+        if (!cellStr.includes(String(val).toLowerCase())) return false;
+      }
+      if (!hasSearch) return true;
+      // Global search across visible columns
+      return (visibleColumns.length ? visibleColumns : inferredColumns).some((c) => {
+        const cell = row?.[c.key];
+        if (cell == null) return false;
+        return String(cell).toLowerCase().includes(s);
+      });
+    });
+  }, [rows, serverSide, search, columnFilters, inferredColumns, visibleColumns]);
 
   const sortedRows = useMemo(() => {
-    if (!rows) return [];
-    if (serverSide || !sortKey) return rows;
-    const copy = [...rows];
+    if (!effectiveRows) return [];
+    if (serverSide || !sortKey) return effectiveRows;
+    const copy = [...effectiveRows];
     copy.sort((a, b) => {
       const va = a?.[sortKey];
       const vb = b?.[sortKey];
@@ -62,7 +114,7 @@ const DataTable = ({
       return sortDir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa);
     });
     return copy;
-  }, [rows, serverSide, sortKey, sortDir]);
+  }, [effectiveRows, serverSide, sortKey, sortDir]);
 
   const clientTotalElements = sortedRows.length;
   const clientTotalPages = Math.ceil(clientTotalElements / clientSize) || 1;
@@ -85,6 +137,33 @@ const DataTable = ({
       setSortKey(key);
       setSortDir('asc');
     }
+  };
+
+  // CSV export using visible columns and current filtered/sorted rows
+  const downloadCSV = () => {
+    const cols = visibleColumns.length ? visibleColumns : inferredColumns;
+    const header = cols.map((c) => '"' + String(c.header ?? c.key).replace(/"/g, '""') + '"').join(',');
+    const dataLines = (serverSide ? sortedRows : sortedRows).map((row) => {
+      return cols
+        .map((c) => {
+          const raw = row?.[c.key];
+          const str = raw == null ? '' : String(raw);
+          const needsQuote = /[",\n]/.test(str);
+          const escaped = str.replace(/"/g, '""');
+          return needsQuote ? `"${escaped}"` : escaped;
+        })
+        .join(',');
+    });
+    const csv = [header, ...dataLines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${exportFileName}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (loading) {
@@ -161,7 +240,78 @@ const DataTable = ({
   }
 
   return (
-    <div className="space-y-4 w-full  lg:max-w-[80vw] max-h-[70vh]">
+    <div className="space-y-4 w-full  lg:max-w-[90vw] max-h-[90vh]">
+      {(enableSearch || enableColumnVisibility || enableExport) && (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          {/* Search */}
+          {enableSearch && (
+            <div className="relative max-w-sm">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearch(val);
+                  if (onSearchChange) onSearchChange(val);
+                }}
+                placeholder={searchPlaceholder}
+                className="w-full border rounded px-3 py-2 pr-8 text-sm"
+              />
+              <span className="absolute right-2 top-2.5 text-gray-400">🔍</span>
+            </div>
+          )}
+          {/* Right controls */}
+          <div className="flex items-center gap-2">
+            {/* Wrap toggle: lets users see full content without ellipsis */}
+            <button
+              type="button"
+              className={`px-3 py-2 border rounded text-sm hover:bg-gray-50 ${wrapCells ? 'bg-gray-50' : ''}`}
+              onClick={() => setWrapCells((w) => !w)}
+              title={wrapCells ? 'Disable wrap' : 'Wrap long text'}
+            >
+              {wrapCells ? 'Unwrap' : 'Wrap'}
+            </button>
+            {enableColumnVisibility && (
+              <div className="relative">
+                <button
+                  type="button"
+                  className="px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                  onClick={() => setShowColumnsMenu((s) => !s)}
+                >
+                  Columns
+                </button>
+                {showColumnsMenu && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border rounded shadow z-20 max-h-64 overflow-auto">
+                    <div className="px-3 py-2 border-b text-xs text-gray-500">Toggle column visibility</div>
+                    {inferredColumns.map((c) => (
+                      <label key={c.key} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={colVisibility[c.key] !== false}
+                          onChange={(e) =>
+                            setColVisibility((prev) => ({ ...prev, [c.key]: e.target.checked }))
+                          }
+                        />
+                        <span className="truncate" title={String(c.header || c.key)}>{c.header || c.key}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {enableExport && (
+              <button
+                type="button"
+                className="px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                onClick={downloadCSV}
+                title="Export visible columns to CSV"
+              >
+                Export CSV
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {/* Mobile card view */}
       <div className="grid gap-3 md:hidden max-h-[70vh] overflow-y-auto">
         {pagedRows.map((row, idx) => {
@@ -208,14 +358,14 @@ const DataTable = ({
 
       {/* Desktop table view */}
       <div className="hidden md:block bg-white rounded-2xl border border-gray-100 w-full max-w-full max-h-[70vh]">
-        <div className="overflow-auto max-w-full max-h-[70vh] ">
-          <table className="w-max min-w-full max-h-[70vh]">
+        <div className="overflow-auto max-w-full max-h-[60vh] ">
+          <table className="w-max min-w-full max-h-[70vh] ">
             <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
               <tr className="divide-x divide-gray-200">
-                {inferredColumns.map((col) => (
+                {visibleColumns.map((col) => (
                   <th
                     key={col.key}
-                    className={`px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap ${col.width ? col.width : 'min-w-[120px]'}`}
+                    className={`px-3 py-4 text-left text-xs font-black bg-red-900 text-white uppercase tracking-wider whitespace-nowrap ${col.width ? col.width : 'min-w-[120px]'}`}
                   >
                     <div
                       className="flex items-center gap-1 hover:text-gray-900 transition-colors cursor-pointer select-none min-w-0"
@@ -232,6 +382,21 @@ const DataTable = ({
                   </th>
                 ))}
               </tr>
+              {enableColumnFilters && (
+                <tr className="divide-x divide-gray-200 bg-gray-50">
+                  {visibleColumns.map((col) => (
+                    <th key={col.key} className="px-2 py-2">
+                      <input
+                        type="text"
+                        value={columnFilters[col.key] || ''}
+                        onChange={(e) => setColumnFilters((prev) => ({ ...prev, [col.key]: e.target.value }))}
+                        placeholder={`Filter ${col.header || col.key}`}
+                        className="w-full border rounded px-2 py-1 text-xs"
+                      />
+                    </th>
+                  ))}
+                </tr>
+              )}
             </thead>
             <tbody className="divide-y divide-gray-50">
               {pagedRows.map((row, rIdx) => {
@@ -240,20 +405,26 @@ const DataTable = ({
                   <tr
                     key={rIdx}
                     className={`transition-colors divide-x divide-gray-100 ${
-                      clickable ? 'hover:bg-gray-50 cursor-pointer' : ''
-                    } ${rIdx % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}
+                      clickable ? 'hover:bg-red-100 cursor-pointer' : ''
+                    } ${rIdx % 2 === 0 ? 'bg-white' : 'bg-red-50'}`}
                     onClick={clickable ? () => onRowClick(row) : undefined}
                   >
-                    {inferredColumns.map((col) => {
+                    {visibleColumns.map((col) => {
                       const value = col.render ? col.render(row[col.key], row) : String(row[col.key] ?? '');
                       return (
                         <td 
                           key={col.key} 
-                          className={`px-3 py-3 text-sm text-gray-700 ${compact ? 'py-2' : 'py-3'} ${col.className || ''} max-w-[200px]`}
+                          className={`px-3 text-sm text-gray-700 ${compact ? 'py-2' : 'py-3'} ${col.className || ''} ${wrapCells ? 'align-top' : ''} max-w-[260px]`}
                         >
-                          <div className="truncate" title={String(value)}>
-                            {value}
-                          </div>
+                          {wrapCells ? (
+                            <div className="whitespace-normal break-words leading-snug" title={String(value)}>
+                              {value}
+                            </div>
+                          ) : (
+                            <div className="truncate" title={String(value)}>
+                              {value}
+                            </div>
+                          )}
                         </td>
                       );
                     })}

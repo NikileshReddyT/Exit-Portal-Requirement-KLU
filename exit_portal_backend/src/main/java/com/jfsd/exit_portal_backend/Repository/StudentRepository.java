@@ -14,4 +14,10 @@ public interface StudentRepository extends JpaRepository<Student, String> {
     List<Student> findAllByStudentIdIn(Collection<String> studentIds);
     long countByProgram_ProgramId(Long programId);
     List<Student> findByProgram_ProgramId(Long programId);
+    
+    // Search helpers for autocomplete
+    List<Student> findByStudentIdContainingIgnoreCase(String q);
+    List<Student> findByProgram_ProgramIdAndStudentIdContainingIgnoreCase(Long programId, String q);
+    List<Student> findByStudentNameContainingIgnoreCase(String q);
+    List<Student> findByProgram_ProgramIdAndStudentNameContainingIgnoreCase(Long programId, String q);
 }

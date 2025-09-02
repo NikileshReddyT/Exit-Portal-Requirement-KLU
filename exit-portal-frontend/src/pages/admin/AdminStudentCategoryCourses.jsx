@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import DataTable from '../../components/admin/DataTable';
 
-const AdminGrades = () => {
+const AdminStudentCategoryCourses = () => {
   const { user } = useAuth();
   const location = useLocation();
   const { selectedProgramId } = useProgramContext();
-  
+  const { categoryName: rawCategory, studentId: rawStudentId } = useParams();
+  const categoryName = decodeURIComponent(rawCategory || '');
+  const studentIdParam = decodeURIComponent(rawStudentId || '');
+
   // Get programId from URL params or context
   const urlParams = new URLSearchParams(location.search);
   const urlProgramId = urlParams.get('programId');
@@ -23,8 +26,6 @@ const AdminGrades = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [studentId, setStudentId] = useState('');
-  const [category, setCategory] = useState('');
 
   const load = async (opts = {}) => {
     try {
@@ -32,21 +33,23 @@ const AdminGrades = () => {
       setError('');
       const base = `${config.backendUrl}/api/v1/admin/data/grades/paged`;
       const params = new URLSearchParams();
-      const sId = opts.studentId ?? studentId;
-      const cat = opts.category ?? category;
       const p = opts.page ?? page;
       const sz = opts.size ?? size;
-      // For SUPER_ADMIN, use programId from context/URL if available
-      // For ADMIN, always use their assigned program
+
+      // Program scoping
       if (user?.userType === 'SUPER_ADMIN' && programId) {
         params.append('programId', String(programId));
       } else if (user?.userType === 'ADMIN' && user?.programId) {
         params.append('programId', String(user.programId));
       }
-      if (sId && sId.trim()) params.append('studentId', sId.trim());
-      if (cat && cat.trim()) params.append('category', cat.trim());
+
+      // Fixed filters from route
+      if (studentIdParam) params.append('studentId', String(studentIdParam));
+      if (categoryName) params.append('category', String(categoryName));
+
       params.append('page', String(p));
       params.append('size', String(sz));
+
       const res = await axios.get(`${base}?${params.toString()}`, { withCredentials: true });
       const data = res.data || {};
       setRows(Array.isArray(data.content) ? data.content : []);
@@ -54,7 +57,7 @@ const AdminGrades = () => {
       setTotalElements(typeof data.totalElements === 'number' ? data.totalElements : 0);
     } catch (e) {
       console.error(e);
-      setError('Failed to load grades');
+      setError('Failed to load courses/grades for this student and category');
     } finally {
       setLoading(false);
     }
@@ -62,43 +65,16 @@ const AdminGrades = () => {
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) return;
-    // Read initial filters from query string
-    const sp = new URLSearchParams(location.search);
-    const sId = sp.get('studentId') || '';
-    const cat = sp.get('category') || '';
-    setStudentId(sId);
-    setCategory(cat);
-    // Load immediately with parsed filters
-    load({ studentId: sId, category: cat, page: 0 });
+    load({ page: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, location.search, programId]);
+  }, [user, location.search, programId, studentIdParam, categoryName]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Grades</h2>
-          <p className="text-sm text-gray-600">Server-side paginated view</p>
-        </div>
-        <div className="w-full sm:w-auto flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          <input
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            placeholder="Filter by student ID"
-            className="w-full sm:w-72 border rounded px-3 py-2"
-          />
-          <input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Filter by category"
-            className="w-full sm:w-56 border rounded px-3 py-2"
-          />
-          <button
-            onClick={() => { setPage(0); load({ page: 0 }); }}
-            className="px-3 py-2 border rounded bg-white hover:bg-gray-50"
-          >
-            Apply
-          </button>
+          <h2 className="text-2xl font-bold text-gray-900">{categoryName} — Courses for Student {studentIdParam}</h2>
+          <p className="text-sm text-gray-600">Server-side paginated grades filtered by student and category</p>
         </div>
       </div>
 
@@ -113,15 +89,14 @@ const AdminGrades = () => {
         onSizeChange={(val) => { setSize(val); setPage(0); load({ size: val, page: 0 }); }}
         loading={loading}
         error={error}
-        emptyText={loading ? '' : (error || 'No grades found')}
-        // UI enhancements
+        emptyText={loading ? '' : (error || 'No records found')}
         enableSearch={false}
         enableColumnVisibility
         enableExport
-        exportFileName="grades"
+        exportFileName={`student-${studentIdParam}-${categoryName}-courses`}
       />
     </div>
   );
 };
 
-export default AdminGrades;
+export default AdminStudentCategoryCourses;

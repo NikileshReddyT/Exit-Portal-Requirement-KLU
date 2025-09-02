@@ -13,6 +13,9 @@ const AdminCourseDetails = () => {
   const [courseRows, setCourseRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState('');
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
@@ -38,8 +41,66 @@ const AdminCourseDetails = () => {
         setLoading(false);
       }
     };
+    const loadStats = async () => {
+      try {
+        setStatsLoading(true);
+        setStatsError('');
+        const base = `${config.backendUrl}/api/v1/admin/data/courses/${encodeURIComponent(courseCode)}/stats`;
+        const params = new URLSearchParams();
+        if (user?.userType === 'ADMIN' && user?.programId) params.append('programId', String(user.programId));
+        const url = params.toString() ? `${base}?${params}` : base;
+        const res = await axios.get(url, { withCredentials: true });
+        setStats(res.data || null);
+      } catch (e) {
+        console.error(e);
+        setStatsError('Failed to load course stats');
+      } finally {
+        setStatsLoading(false);
+      }
+    };
     load();
+    loadStats();
   }, [user, navigate, courseCode]);
+
+  const GradeBarList = ({ title, items, itemKey = 'grade' }) => {
+    const data = Array.isArray(items) ? items : [];
+    const total = data.reduce((s, it) => s + Number(it.count || 0), 0);
+    const max = data.reduce((m, it) => Math.max(m, Number(it.count || 0)), 0);
+    const fmtPct = (n) => total > 0 ? ((n * 100) / total).toFixed(1) + '%' : '0%';
+    const sorted = [...data].sort((a,b) => Number(b.count||0) - Number(a.count||0));
+    return (
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="font-semibold text-gray-900">{title}</h4>
+          <span className="text-sm text-gray-500">Total: {total}</span>
+        </div>
+        {sorted.length === 0 ? (
+          <p className="text-sm text-gray-500">No data</p>
+        ) : (
+          <div className="space-y-2">
+            {sorted.map((it) => {
+              const label = String(it[itemKey] ?? 'NA');
+              const cnt = Number(it.count || 0);
+              const width = max > 0 ? Math.max(4, Math.round((cnt / max) * 100)) : 0;
+              return (
+                <div key={label} className="flex items-center gap-3">
+                  <div className="w-12 text-xs font-medium text-gray-700 text-right">{label}</div>
+                  <div className="flex-1">
+                    <div className="h-3 bg-gray-100 rounded">
+                      <div className="h-3 bg-indigo-500 rounded" style={{ width: `${width}%` }} />
+                    </div>
+                  </div>
+                  <div className="w-28 text-xs text-gray-600 text-right">
+                    {cnt} • {fmtPct(cnt)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -54,6 +115,22 @@ const AdminCourseDetails = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">Course Info</h3>
         <DataTable rows={courseRows} loading={loading} error={error} emptyText={loading ? '' : (error || 'No course data found')} />
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold text-gray-900">Course Stats</h3>
+          {statsLoading && <span className="text-sm text-gray-500">Loading…</span>}
+          {statsError && <span className="text-sm text-red-600">{statsError}</span>}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col justify-center items-center">
+            <div className="text-sm text-gray-500">Registered Students</div>
+            <div className="text-3xl font-bold text-gray-900">{stats?.registeredCount ?? (statsLoading ? '—' : 0)}</div>
+          </div>
+          <GradeBarList title="Grade Distribution" items={stats?.gradeCounts} itemKey="grade" />
+          <GradeBarList title="Promotion Distribution" items={stats?.promotionCounts} itemKey="promotion" />
+        </div>
       </div>
     </div>
   );

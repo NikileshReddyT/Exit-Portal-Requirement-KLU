@@ -106,4 +106,20 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
         long getMet();
         double getAvgCreditCompletion();
     }
+
+    // Students who met a given category (optionally scoped by program)
+    @Query(value = "SELECT scp.university_id AS universityId, scp.student_name AS studentName\n" +
+            "FROM student_category_progress scp\n" +
+            "WHERE scp.category_name = :categoryName\n" +
+            "  AND (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  AND ( (COALESCE(scp.min_required_courses,0) <= 0 OR COALESCE(scp.completed_courses,0) >= scp.min_required_courses)\n" +
+            "        AND (COALESCE(scp.min_required_credits,0) <= 0 OR COALESCE(scp.completed_credits,0) >= scp.min_required_credits) )\n" +
+            "GROUP BY scp.university_id, scp.student_name",
+            nativeQuery = true)
+    List<MetProjection> findStudentsWhoMetCategory(@Param("programId") Long programId, @Param("categoryName") String categoryName);
+
+    interface MetProjection {
+        String getUniversityId();
+        String getStudentName();
+    }
 }

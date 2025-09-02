@@ -113,23 +113,8 @@ const AdminOverview = () => {
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
   
   return (
-    <div className="space-y-8">
-      {/* Program Info Section */}
-      {programInfo && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-blue-900 mb-2 text-center md:text-left">Program Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-center md:text-left ">
-            <div>
-              <span className="font-medium text-blue-800">Code:</span>
-              <span className="ml-2 text-blue-700">{programInfo.code}</span>
-            </div>
-            <div>
-              <span className="font-medium text-blue-800">Name:</span>
-              <span className="ml-2 text-blue-700">{programInfo.name}</span>
-            </div>
-          </div>
-        </div>
-      )}
+    <div className="space-y-8 min-h-full">
+      {/* Program info is now shown in the navbar (left section). */}
       
       <div>
         <h2 className="text-2xl font-bold text-gray-900">

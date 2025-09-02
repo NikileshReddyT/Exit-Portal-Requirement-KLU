@@ -22,4 +22,8 @@ public interface CategoriesRepository extends JpaRepository<Categories, Integer>
     // List categories for a program (3NF-friendly)
     List<Categories> findByProgram(Program program);
 
+    // Search helpers for autocomplete
+    List<Categories> findByCategoryNameContainingIgnoreCase(String q);
+    List<Categories> findByProgramAndCategoryNameContainingIgnoreCase(Program program, String q);
+
 }

@@ -404,6 +404,7 @@ public class AdminInsightsService {
             m.put("category", g.getCategory());
             m.put("year", g.getYear());
             m.put("semester", g.getSemester());
+            m.put("promotion", g.getPromotion());
             return m;
         }).collect(Collectors.toList());
     }
@@ -442,6 +443,7 @@ public class AdminInsightsService {
             m.put("category", g.getCategory());
             m.put("year", g.getYear());
             m.put("semester", g.getSemester());
+            m.put("promotion", g.getPromotion());
             return m;
         }).collect(Collectors.toList());
 
@@ -584,5 +586,133 @@ public class AdminInsightsService {
         private double round(double v) {
             return Math.round(v * 1000.0) / 1000.0; // 3 decimals
         }
+    }
+
+    // Students who met a given category (optionally scoped by program)
+    public List<Map<String, Object>> listStudentsWhoMetCategory(Long programId, String categoryName) {
+        if (categoryName == null || categoryName.isBlank()) return Collections.emptyList();
+        List<StudentCategoryProgressRepository.MetProjection> rows =
+                progressRepository.findStudentsWhoMetCategory(programId, categoryName);
+        return rows.stream().map(mp -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("studentId", mp.getUniversityId());
+            m.put("studentName", mp.getStudentName());
+            return m;
+        }).collect(Collectors.toList());
+    }
+
+    // ===== Search helpers for autocomplete and details =====
+    public List<Map<String, Object>> searchStudents(Long programId, String q, int limit) {
+        if (q == null || q.isBlank()) return Collections.emptyList();
+        String query = q.trim();
+        List<Student> byId;
+        List<Student> byName;
+        if (programId != null) {
+            byId = studentRepository.findByProgram_ProgramIdAndStudentIdContainingIgnoreCase(programId, query);
+            byName = studentRepository.findByProgram_ProgramIdAndStudentNameContainingIgnoreCase(programId, query);
+        } else {
+            byId = studentRepository.findByStudentIdContainingIgnoreCase(query);
+            byName = studentRepository.findByStudentNameContainingIgnoreCase(query);
+        }
+        // Merge and distinct by studentId
+        Map<String, Student> merged = new LinkedHashMap<>();
+        for (Student s : byId) merged.putIfAbsent(s.getStudentId(), s);
+        for (Student s : byName) merged.putIfAbsent(s.getStudentId(), s);
+        return merged.values().stream()
+                .limit(Math.max(1, limit))
+                .map(s -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("studentId", s.getStudentId());
+                    m.put("studentName", s.getStudentName());
+                    if (s.getProgram() != null) {
+                        m.put("programId", s.getProgram().getProgramId());
+                        m.put("programCode", s.getProgram().getCode());
+                        m.put("programName", s.getProgram().getName());
+                    }
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
+    public Map<String, Object> getStudentBasic(String studentId) {
+        if (studentId == null || studentId.isBlank()) return Collections.emptyMap();
+        Optional<Student> sOpt = studentRepository.findByStudentId(studentId.trim());
+        if (sOpt.isEmpty()) return Collections.emptyMap();
+        Student s = sOpt.get();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("studentId", s.getStudentId());
+        m.put("studentName", s.getStudentName());
+        if (s.getProgram() != null) {
+            m.put("programId", s.getProgram().getProgramId());
+            m.put("programCode", s.getProgram().getCode());
+            m.put("programName", s.getProgram().getName());
+        }
+        return m;
+    }
+
+    public List<Map<String, Object>> searchCategories(Long programId, String q, int limit) {
+        if (q == null || q.isBlank()) return Collections.emptyList();
+        String query = q.trim();
+        List<Categories> cats;
+        if (programId != null) {
+            Optional<Program> p = programRepository.findById(programId);
+            cats = p.map(pr -> categoriesRepository.findByProgramAndCategoryNameContainingIgnoreCase(pr, query))
+                    .orElse(Collections.emptyList());
+        } else {
+            cats = categoriesRepository.findByCategoryNameContainingIgnoreCase(query);
+        }
+        return cats.stream()
+                .limit(Math.max(1, limit))
+                .map(c -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("categoryId", c.getCategoryID());
+                    m.put("categoryName", c.getCategoryName());
+                    if (c.getProgram() != null) {
+                        m.put("programId", c.getProgram().getProgramId());
+                        m.put("programCode", c.getProgram().getCode());
+                        m.put("programName", c.getProgram().getName());
+                    }
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
+    // ===== Course stats: grade and promotion distributions, registered count =====
+    public Map<String, Object> getCourseStats(Long programId, String courseCode) {
+        if (courseCode == null || courseCode.isBlank()) return Collections.emptyMap();
+        String code = courseCode.trim();
+
+        List<Object[]> gradeRows = (programId != null)
+                ? studentGradeRepository.countGradesByCourseAndProgram(code, programId)
+                : studentGradeRepository.countGradesByCourse(code);
+
+        List<Object[]> promotionRows = (programId != null)
+                ? studentGradeRepository.countPromotionsByCourseAndProgram(code, programId)
+                : studentGradeRepository.countPromotionsByCourse(code);
+
+        long registered = (programId != null)
+                ? studentGradeRepository.countDistinctStudentsByCourseAndProgram(code, programId)
+                : studentGradeRepository.countDistinctStudentsByCourse(code);
+
+        List<Map<String, Object>> gradeCounts = gradeRows.stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("grade", String.valueOf(r[0]));
+            m.put("count", ((Number) r[1]).longValue());
+            return m;
+        }).collect(Collectors.toList());
+
+        List<Map<String, Object>> promotionCounts = promotionRows.stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("promotion", String.valueOf(r[0]));
+            m.put("count", ((Number) r[1]).longValue());
+            return m;
+        }).collect(Collectors.toList());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("courseCode", code);
+        out.put("registeredCount", registered);
+        out.put("gradeCounts", gradeCounts);
+        out.put("promotionCounts", promotionCounts);
+        return out;
     }
 }

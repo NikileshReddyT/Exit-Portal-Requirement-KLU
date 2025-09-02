@@ -9,7 +9,8 @@ const StatCard = ({
   icon, 
   color = 'blue',
   onClick,
-  loading = false 
+  loading = false,
+  details = []
 }) => {
   const colorClasses = {
     blue: 'from-blue-50 to-blue-100 text-blue-700 border-blue-200',
@@ -21,7 +22,7 @@ const StatCard = ({
   };
 
   const Component = onClick ? 'button' : 'div';
-  const baseClasses = "bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 w-full transition-all duration-200";
+  const baseClasses = "bg-white rounded-2xl shadow-sm border border-gray-100 p-3 sm:p-5 w-full transition-all duration-200";
   const interactiveClasses = onClick ? "hover:shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer" : "";
 
   if (loading) {
@@ -46,14 +47,14 @@ const StatCard = ({
     >
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <p className="text-xs sm:text-sm font-medium text-gray-600 uppercase tracking-wide">
+          <p className="text-[10px] sm:text-sm font-medium text-gray-600 uppercase tracking-wide">
             {title}
           </p>
-          <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mt-1 truncate">
+          <p className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900 mt-0.5 truncate">
             {value}
           </p>
           {subtitle && (
-            <p className="text-xs sm:text-sm text-gray-500 mt-1 line-clamp-2">
+            <p className="text-[11px] sm:text-sm text-gray-500 mt-1 line-clamp-2">
               {subtitle}
             </p>
           )}
@@ -71,10 +72,22 @@ const StatCard = ({
               </span>
             </div>
           )}
+          {Array.isArray(details) && details.length > 0 && (
+            <div className="mt-3 md:hidden">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                {details.map((item, idx) => (
+                  <div key={idx} className="flex flex-col min-w-0">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wide truncate">{item.label}</span>
+                    <span className="text-[11px] text-gray-900 break-words">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         {icon && (
-          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br border flex items-center justify-center flex-shrink-0 ml-3 ${colorClasses[color] || colorClasses.blue}`}>
-            <span className="text-lg sm:text-xl">{icon}</span>
+          <div className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br border flex items-center justify-center flex-shrink-0 ml-3 ${colorClasses[color] || colorClasses.blue}`}>
+            <span className="text-base sm:text-xl">{icon}</span>
           </div>
         )}
       </div>

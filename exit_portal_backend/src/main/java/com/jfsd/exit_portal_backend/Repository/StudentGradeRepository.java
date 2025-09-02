@@ -53,4 +53,35 @@ public interface StudentGradeRepository extends JpaRepository<StudentGrade, Long
 
     // Course completers scoped by program
     List<StudentGrade> findByCourse_CourseCodeAndPromotionIgnoreCaseAndStudent_Program_ProgramId(String courseCode, String promotion, Long programId);
+ 
+    // ===== Aggregations for course grade distribution =====
+    @Query("SELECT COALESCE(UPPER(sg.grade),'NA') AS g, COUNT(sg) AS cnt " +
+           "FROM StudentGrade sg JOIN sg.course c " +
+           "WHERE LOWER(c.courseCode) = LOWER(:courseCode) " +
+           "GROUP BY COALESCE(UPPER(sg.grade),'NA')")
+    List<Object[]> countGradesByCourse(@Param("courseCode") String courseCode);
+
+    @Query("SELECT COALESCE(UPPER(sg.grade),'NA') AS g, COUNT(sg) AS cnt " +
+           "FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p " +
+           "WHERE LOWER(c.courseCode) = LOWER(:courseCode) AND p.programId = :programId " +
+           "GROUP BY COALESCE(UPPER(sg.grade),'NA')")
+    List<Object[]> countGradesByCourseAndProgram(@Param("courseCode") String courseCode, @Param("programId") Long programId);
+
+    @Query("SELECT COALESCE(UPPER(sg.promotion),'NA') AS pr, COUNT(sg) AS cnt " +
+           "FROM StudentGrade sg JOIN sg.course c " +
+           "WHERE LOWER(c.courseCode) = LOWER(:courseCode) " +
+           "GROUP BY COALESCE(UPPER(sg.promotion),'NA')")
+    List<Object[]> countPromotionsByCourse(@Param("courseCode") String courseCode);
+
+    @Query("SELECT COALESCE(UPPER(sg.promotion),'NA') AS pr, COUNT(sg) AS cnt " +
+           "FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p " +
+           "WHERE LOWER(c.courseCode) = LOWER(:courseCode) AND p.programId = :programId " +
+           "GROUP BY COALESCE(UPPER(sg.promotion),'NA')")
+    List<Object[]> countPromotionsByCourseAndProgram(@Param("courseCode") String courseCode, @Param("programId") Long programId);
+
+    @Query("SELECT COUNT(DISTINCT sg.student.studentId) FROM StudentGrade sg JOIN sg.course c WHERE LOWER(c.courseCode) = LOWER(:courseCode)")
+    long countDistinctStudentsByCourse(@Param("courseCode") String courseCode);
+
+    @Query("SELECT COUNT(DISTINCT sg.student.studentId) FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p WHERE LOWER(c.courseCode) = LOWER(:courseCode) AND p.programId = :programId")
+    long countDistinctStudentsByCourseAndProgram(@Param("courseCode") String courseCode, @Param("programId") Long programId);
 }

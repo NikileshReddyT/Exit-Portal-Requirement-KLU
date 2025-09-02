@@ -9,10 +9,14 @@ import AdminStudents from './pages/admin/AdminStudents';
 import AdminStudentDetails from './pages/admin/AdminStudentDetails';
 import AdminCategories from './pages/admin/AdminCategories';
 import AdminCategoryDetails from './pages/admin/AdminCategoryDetails';
+import AdminCategoriesSummary from './pages/admin/AdminCategoriesSummary';
+import AdminCategoryStudents from './pages/admin/AdminCategoryStudents';
+import AdminStudentCategoryCourses from './pages/admin/AdminStudentCategoryCourses';
 import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseDetails from './pages/admin/AdminCourseDetails';
 import AdminGrades from './pages/admin/AdminGrades';
 import AdminProgress from './pages/admin/AdminProgress';
+import AdminInsights from './pages/admin/AdminInsights';
 import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
 import CategoriesUpload from './pages/admin/upload/CategoriesUpload';
 import CoursesUpload from './pages/admin/upload/CoursesUpload';
@@ -48,10 +52,14 @@ function App() {
         <Route path='/admin' element={<AdminLayout />}>
           <Route index element={<Navigate to="/admin/overview" replace />} />
           <Route path='overview' element={<AdminOverview />} />
+          <Route path='insights' element={<AdminInsights />} />
           <Route path='students' element={<AdminStudents />} />
           <Route path='students/:studentId' element={<AdminStudentDetails />} />
           <Route path='categories' element={<AdminCategories />} />
           <Route path='categories/:categoryName' element={<AdminCategoryDetails />} />
+          <Route path='categories-summary' element={<AdminCategoriesSummary />} />
+          <Route path='categories-summary/:categoryName' element={<AdminCategoryStudents />} />
+          <Route path='categories-summary/:categoryName/students/:studentId' element={<AdminStudentCategoryCourses />} />
           <Route path='courses' element={<AdminCourses />} />
           <Route path='courses/:courseCode' element={<AdminCourseDetails />} />
           <Route path='grades' element={<AdminGrades />} />
@@ -68,10 +76,14 @@ function App() {
         <Route path='/superadmin' element={<AdminLayout />}>
           <Route index element={<Navigate to="/superadmin/overview" replace />} />
           <Route path='overview' element={<AdminOverview />} />
+          <Route path='insights' element={<AdminInsights />} />
           <Route path='students' element={<AdminStudents />} />
           <Route path='students/:studentId' element={<AdminStudentDetails />} />
           <Route path='categories' element={<AdminCategories />} />
           <Route path='categories/:categoryName' element={<AdminCategoryDetails />} />
+          <Route path='categories-summary' element={<AdminCategoriesSummary />} />
+          <Route path='categories-summary/:categoryName' element={<AdminCategoryStudents />} />
+          <Route path='categories-summary/:categoryName/students/:studentId' element={<AdminStudentCategoryCourses />} />
           <Route path='courses' element={<AdminCourses />} />
           <Route path='courses/:courseCode' element={<AdminCourseDetails />} />
           <Route path='grades' element={<AdminGrades />} />

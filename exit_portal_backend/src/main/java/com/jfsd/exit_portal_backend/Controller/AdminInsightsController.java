@@ -194,6 +194,15 @@ public class AdminInsightsController {
         return ResponseEntity.ok(adminInsightsService.listCoursesByCategory(programId, categoryName));
     }
 
+    // Students who met a given category
+    @GetMapping("/data/students/by-category/met")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<List<Map<String, Object>>> listStudentsWhoMetCategory(
+            @RequestParam(value = "programId", required = false) Long programId,
+            @RequestParam(value = "categoryName") String categoryName) {
+        return ResponseEntity.ok(adminInsightsService.listStudentsWhoMetCategory(programId, categoryName));
+    }
+
     // Students who completed a course (promotion == 'P')
     @GetMapping("/data/courses/{courseCode}/completers")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
@@ -201,6 +210,42 @@ public class AdminInsightsController {
             @PathVariable("courseCode") String courseCode,
             @RequestParam(value = "programId", required = false) Long programId) {
         return ResponseEntity.ok(adminInsightsService.listCourseCompleters(programId, courseCode));
+    }
+
+    // Course stats (grade/promotion distributions and registered count)
+    @GetMapping("/data/courses/{courseCode}/stats")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getCourseStats(
+            @PathVariable("courseCode") String courseCode,
+            @RequestParam(value = "programId", required = false) Long programId) {
+        return ResponseEntity.ok(adminInsightsService.getCourseStats(programId, courseCode));
+    }
+
+    // Search students (by ID or name, optional program scope)
+    @GetMapping("/data/students/search")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<List<Map<String, Object>>> searchStudents(
+            @RequestParam(value = "programId", required = false) Long programId,
+            @RequestParam(value = "q") String q,
+            @RequestParam(value = "limit", defaultValue = "10") int limit) {
+        return ResponseEntity.ok(adminInsightsService.searchStudents(programId, q, limit));
+    }
+
+    // Get basic student info by ID
+    @GetMapping("/data/students/{studentId}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getStudentBasic(@PathVariable("studentId") String studentId) {
+        return ResponseEntity.ok(adminInsightsService.getStudentBasic(studentId));
+    }
+
+    // Search categories by name (optional program scope)
+    @GetMapping("/data/categories/search")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<List<Map<String, Object>>> searchCategories(
+            @RequestParam(value = "programId", required = false) Long programId,
+            @RequestParam(value = "q") String q,
+            @RequestParam(value = "limit", defaultValue = "10") int limit) {
+        return ResponseEntity.ok(adminInsightsService.searchCategories(programId, q, limit));
     }
 
     private String getJwtFromCookie(HttpServletRequest request) {
