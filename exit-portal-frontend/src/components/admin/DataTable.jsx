@@ -213,7 +213,7 @@ const DataTable = ({
 
   if (loading) {
     return (
-      <div className="space-y-4 w-full lg:max-w-[80vw] max-h-[70vh]">
+      <div className="space-y-4 w-full">
         {/* Mobile loading cards */}
         <div className="grid gap-3 md:hidden max-h-[70vh] overflow-y-auto">
           {[1, 2, 3].map((i) => (
@@ -376,7 +376,9 @@ const DataTable = ({
               <div className="space-y-2">
                 {mobileColumnsLimited.map((col) => {
                   const valueRaw = col.render ? col.render(row[col.key], row) : row[col.key];
-                  const value = highlightText(valueRaw, search);
+                  const value = (typeof valueRaw === 'string' || typeof valueRaw === 'number')
+                    ? highlightText(valueRaw, search)
+                    : valueRaw;
                   return (
                     <div key={col.key} className="flex justify-between items-start">
                       <span className="text-xs font-medium text-gray-500 uppercase tracking-wide flex-shrink-0 mr-3">
@@ -398,15 +400,15 @@ const DataTable = ({
       <div className="hidden md:block bg-white rounded-2xl border border-gray-100 w-full max-w-full max-h-[70vh]">
         <div className="overflow-auto max-w-full max-h-[60vh] ">
           <table className="w-max min-w-full max-h-[70vh] ">
-            <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+            <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-center">
               <tr className="divide-x divide-gray-200">
                 {visibleColumns.map((col) => (
                   <th
                     key={col.key}
-                    className={`px-3 py-4 text-left text-xs font-black bg-red-900 text-white uppercase tracking-wider whitespace-nowrap ${col.width ? col.width : 'min-w-[120px]'}`}
+                    className={`px-3 py-4 text-center text-xs font-black bg-red-900 text-white uppercase tracking-wider whitespace-nowrap ${col.width ? col.width : 'min-w-[120px]'}`}
                   >
                     <div
-                      className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer select-none min-w-0"
+                      className="flex items-center justify-center gap-1 hover:text-white transition-colors cursor-pointer select-none min-w-0"
                       onClick={() => handleHeaderClick(col.key)}
                       title="Click to sort"
                     >
@@ -452,7 +454,9 @@ const DataTable = ({
                   >
                     {visibleColumns.map((col) => {
                       const valueRaw = col.render ? col.render(row[col.key], row) : row[col.key];
-                      const value = highlightText(valueRaw, search);
+                      const value = (typeof valueRaw === 'string' || typeof valueRaw === 'number')
+                        ? highlightText(valueRaw, search)
+                        : valueRaw;
                       return (
                         <td 
                           key={col.key} 

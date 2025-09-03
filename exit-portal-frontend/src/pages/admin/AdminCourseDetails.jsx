@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import DataTable from '../../components/admin/DataTable';
 import { FiUsers, FiTrendingUp } from 'react-icons/fi';
+import { useProgramContext } from '../../context/ProgramContext';
 
 const AdminCourseDetails = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { courseCode } = useParams();
+  const location = useLocation();
+  const { selectedProgramId } = useProgramContext();
 
   const [courseRows, setCourseRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +20,11 @@ const AdminCourseDetails = () => {
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState('');
+
+  // Get programId from URL params or context (for SUPER_ADMIN); for ADMIN use their programId
+  const urlParams = new URLSearchParams(location.search);
+  const urlProgramId = urlParams.get('programId');
+  const programId = selectedProgramId || urlProgramId;
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
@@ -27,14 +35,33 @@ const AdminCourseDetails = () => {
       try {
         setLoading(true);
         setError('');
-        const base = `${config.backendUrl}/api/v1/admin/data/courses`;
         const params = new URLSearchParams();
-        if (user?.userType === 'ADMIN' && user?.programId) params.append('programId', String(user.programId));
-        const url = params.toString() ? `${base}?${params}` : base;
-        const res = await axios.get(url, { withCredentials: true });
-        const list = Array.isArray(res.data) ? res.data : [];
+        if (user?.userType === 'SUPER_ADMIN' && programId) {
+          params.append('programId', String(programId));
+        } else if (user?.userType === 'ADMIN' && user?.programId) {
+          params.append('programId', String(user.programId));
+        }
+        const qs = params.toString();
+        const baseCourses = `${config.backendUrl}/api/v1/admin/data/courses`;
+        const baseMappings = `${config.backendUrl}/api/v1/admin/data/mappings`;
+        const [coursesRes, mappingsRes] = await Promise.all([
+          axios.get(qs ? `${baseCourses}?${qs}` : baseCourses, { withCredentials: true }),
+          axios.get(qs ? `${baseMappings}?${qs}` : baseMappings, { withCredentials: true }),
+        ]);
+        const list = Array.isArray(coursesRes.data) ? coursesRes.data : [];
+        const mappings = Array.isArray(mappingsRes.data) ? mappingsRes.data : [];
+
+        const categoriesForCode = mappings
+          .filter(m => String(m?.courseCode || '').toLowerCase() === String(courseCode).toLowerCase())
+          .reduce((set, m) => { const name = m?.categoryName; if (name) set.add(String(name)); return set; }, new Set());
+
         const filtered = list.filter(c => String(c.courseCode || c.code || c.id).toLowerCase() === String(courseCode).toLowerCase());
-        setCourseRows(filtered.length ? filtered : list);
+        const enriched = (filtered.length ? filtered : list).map(c => {
+          const code = c?.courseCode || c?.code || c?.id;
+          if (String(code).toLowerCase() !== String(courseCode).toLowerCase()) return c;
+          return { ...c, categoryNames: Array.from(categoriesForCode) };
+        });
+        setCourseRows(enriched);
       } catch (e) {
         console.error(e);
         setError('Failed to load course details');
@@ -48,7 +75,11 @@ const AdminCourseDetails = () => {
         setStatsError('');
         const base = `${config.backendUrl}/api/v1/admin/data/courses/${encodeURIComponent(courseCode)}/stats`;
         const params = new URLSearchParams();
-        if (user?.userType === 'ADMIN' && user?.programId) params.append('programId', String(user.programId));
+        if (user?.userType === 'SUPER_ADMIN' && programId) {
+          params.append('programId', String(programId));
+        } else if (user?.userType === 'ADMIN' && user?.programId) {
+          params.append('programId', String(user.programId));
+        }
         const url = params.toString() ? `${base}?${params}` : base;
         const res = await axios.get(url, { withCredentials: true });
         setStats(res.data || null);
@@ -61,7 +92,7 @@ const AdminCourseDetails = () => {
     };
     load();
     loadStats();
-  }, [user, navigate, courseCode]);
+  }, [user, navigate, courseCode, programId]);
 
   const GradeBarList = ({ title, items, itemKey = 'grade' }) => {
     const data = Array.isArray(items) ? items : [];
@@ -115,7 +146,39 @@ const AdminCourseDetails = () => {
 
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">Course Info</h3>
-        <DataTable rows={courseRows} loading={loading} error={error} emptyText={loading ? '' : (error || 'No course data found')} />
+        <DataTable 
+          rows={courseRows}
+          columns={[
+            { key: 'courseCode', header: 'Course Code', className: 'text-center' },
+            { key: 'courseTitle', header: 'Course Title' },
+            { key: 'courseCredits', header: 'Credits', className: 'text-center' },
+            {
+              key: 'categoryNames',
+              header: 'Category',
+              render: (_val, row) => {
+                const list = Array.isArray(row?.categoryNames) ? row.categoryNames : [];
+                if (!list.length) return <span className="text-gray-400">—</span>;
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {list.map((name) => (
+                      <button
+                        key={name}
+                        className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/admin/categories/${encodeURIComponent(String(name))}`); }}
+                        title={`View category ${name}`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                );
+              }
+            }
+          ]}
+          loading={loading}
+          error={error}
+          emptyText={loading ? '' : (error || 'No course data found')}
+        />
       </div>
 
       <div className="space-y-4">

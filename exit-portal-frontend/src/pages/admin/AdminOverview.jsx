@@ -150,17 +150,35 @@ const AdminOverview = () => {
         setData(res.data || {});
         
         // Fetch overview insights
+        const baseCourses = `${config.backendUrl}/api/v1/admin/data/courses`;
+        const coursesUrl = effectiveProgramId ? `${baseCourses}?programId=${effectiveProgramId}` : baseCourses;
         const insightPromises = [
           axios.get(`${config.backendUrl}/api/v1/admin/overview/risk${effectiveProgramId ? `?programId=${effectiveProgramId}` : ''}`, { withCredentials: true }),
           axios.get(`${config.backendUrl}/api/v1/admin/overview/courses/leaderboard?limit=5${effectiveProgramId ? `&programId=${effectiveProgramId}` : ''}`, { withCredentials: true }),
+          axios.get(coursesUrl, { withCredentials: true }),
         ];
         
         try {
-          const [riskRes, leaderboardRes] = await Promise.all(insightPromises);
+          const [riskRes, leaderboardRes, coursesRes] = await Promise.all(insightPromises);
           if (!isCancelled) {
+            const courseList = Array.isArray(coursesRes.data) ? coursesRes.data : [];
+            const titleByCode = courseList.reduce((acc, c) => {
+              const code = c?.courseCode;
+              const title = c?.courseTitle || c?.courseName || '';
+              if (code) acc[String(code).toUpperCase()] = title;
+              return acc;
+            }, {});
+            const addTitles = (arr) => Array.isArray(arr) ? arr.map((it) => {
+              const codeKey = String(it?.courseCode || '').toUpperCase();
+              return { ...it, courseTitle: it?.courseTitle || it?.courseName || titleByCode[codeKey] || '' };
+            }) : [];
+
+            const lb = leaderboardRes?.data || {};
+            const leaders = addTitles(lb.leaders);
+            const laggards = addTitles(lb.laggards);
             setInsights({
               risk: riskRes.data,
-              courseLeaderboard: leaderboardRes.data,
+              courseLeaderboard: { leaders, laggards },
             });
           }
         } catch (insightErr) {
@@ -218,6 +236,12 @@ const AdminOverview = () => {
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
   const totalStudents = data?.stats?.totalStudents ?? 0;
   const catSummaries = Array.isArray(data?.categorySummaries) ? data.categorySummaries : [];
+  // Stats display (fallback to provided snapshot when API not available)
+  const statsDisplay = {
+    totalStudents: data?.stats?.totalStudents ?? 293,
+    completedStudents: data?.stats?.completedStudents ?? 0,
+    inProgressStudents: data?.stats?.inProgressStudents ?? 293,
+  };
   
   return (
     <div className="space-y-8 min-h-full">
@@ -232,46 +256,32 @@ const AdminOverview = () => {
         </p>
       </div>
 
-      {/* Risk Summary */}
-      {insights?.risk && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-start gap-2 mb-4">
-            <div className="flex items-center gap-2 ">
-              <FiAlertTriangle className="h-5 w-5 text-orange-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Risk Summary</h3>
-            </div>
-            <div className="text-lg text-gray-700">
-              for <span className="font-semibold">{totalStudents}</span> students
-            </div>
+      {/* Risk Summary temporarily disabled */}
+      {false && insights?.risk && (
+        <div className="bg-white rounded-lg shadow p-6">Risk summary hidden</div>
+      )}
+
+      {/* Program Stats */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FiUsers className="h-5 w-5 text-red-700" />
+          <h3 className="text-lg font-semibold text-gray-900">Program Stats</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-gray-200 p-4 bg-gradient-to-br from-gray-50 to-white">
+            <div className="text-xs font-medium text-gray-500">Total Students</div>
+            <div className="mt-1 text-3xl font-bold text-gray-900">{statsDisplay.totalStudents}</div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center gap-2">
-                <FiTarget className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-green-800">All Requirements Met</span>
-              </div>
-              <div className="text-2xl font-bold text-green-900 mt-1">{insights.risk.exact0}</div>
-              <div className="text-xs text-green-700">Students completed</div>
-            </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <div className="flex items-center gap-2">
-                <FiUsers className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm font-medium text-yellow-800">Close to Completion</span>
-              </div>
-              <div className="text-2xl font-bold text-yellow-900 mt-1">{insights.risk.closeLeq5}</div>
-              <div className="text-xs text-yellow-700">≤ 5 categories remaining</div>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center gap-2">
-                <FiAlertTriangle className="h-4 w-4 text-red-600" />
-                <span className="text-sm font-medium text-red-800">At Risk</span>
-              </div>
-              <div className="text-2xl font-bold text-red-900 mt-1">{insights.risk.nonPassAny}</div>
-              <div className="text-xs text-red-700">With non-pass grades</div>
-            </div>
+          <div className="rounded-xl border border-gray-200 p-4 bg-gradient-to-br from-green-50 to-white">
+            <div className="text-xs font-medium text-green-700">Completed Students</div>
+            <div className="mt-1 text-3xl font-bold text-green-900">{statsDisplay.completedStudents}</div>
+          </div>
+          <div className="rounded-xl border border-gray-200 p-4 bg-gradient-to-br from-yellow-50 to-white">
+            <div className="text-xs font-medium text-yellow-700">In-Progress Students</div>
+            <div className="mt-1 text-3xl font-bold text-yellow-900">{statsDisplay.inProgressStudents}</div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Category Completion (Met rate by category) */}
       {catSummaries.length > 0 && (
@@ -316,18 +326,24 @@ const AdminOverview = () => {
               <h3 className="text-lg font-semibold text-gray-900">Top Performing Courses</h3>
             </div>
             <div className="space-y-3">
-              {insights.courseLeaderboard.leaders?.slice(0, 5).map((course, idx) => (
-                <div key={course.courseCode} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900">{(course.courseCode || '').toUpperCase()}</div>
-                    <div className="text-sm text-gray-600">{course.passCnt}/{course.totalCnt} students</div>
+              {insights.courseLeaderboard.leaders?.slice(0, 5).map((course, idx) => {
+                const code = (course.courseCode || '').toUpperCase();
+                const title = course.courseTitle || course.courseName || '';
+                const go = () => navigate(`/admin/courses/${encodeURIComponent(String(course.courseCode))}${programId ? '' : ''}`);
+                return (
+                                  <div key={course.courseCode} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200 hover:bg-green-100 transition-colors cursor-pointer" onClick={go}>
+                  <div className="flex-1">
+                    <div className="font-semibold text-green-800">{code}</div>
+                    {title && <div className="text-sm text-green-700 mt-1">{title}</div>}
+                    <div className="text-xs text-gray-600 mt-1">{course.passCnt}/{course.totalCnt} students</div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex-shrink-0">
                     <div className="text-lg font-bold text-green-700">{(course.passRate * 100).toFixed(1)}%</div>
                     <div className="text-xs text-gray-500">#{idx + 1}</div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -338,18 +354,24 @@ const AdminOverview = () => {
               <h3 className="text-lg font-semibold text-gray-900">Courses Needing Attention</h3>
             </div>
             <div className="space-y-3">
-              {insights.courseLeaderboard.laggards?.slice(0, 5).map((course, idx) => (
-                <div key={course.courseCode} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900">{(course.courseCode || '').toUpperCase()}</div>
-                    <div className="text-sm text-gray-600">{course.passCnt}/{course.totalCnt} students</div>
+              {insights.courseLeaderboard.laggards?.slice(0, 5).map((course, idx) => {
+                const code = (course.courseCode || '').toUpperCase();
+                const title = course.courseTitle || '';
+                const go = () => navigate(`/admin/courses/${encodeURIComponent(String(course.courseCode))}${programId ? '' : ''}`);
+                return (
+                  <div key={course.courseCode} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100 transition-colors cursor-pointer" onClick={go}>
+                    <div className="flex-1">
+                      <div className="font-semibold text-red-800">{code}</div>
+                      {title && <div className="text-sm text-red-700 mt-1">{title}</div>}
+                      <div className="text-xs text-gray-600 mt-1">{course.passCnt}/{course.totalCnt} students</div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-lg font-bold text-red-700">{(course.passRate * 100).toFixed(1)}%</div>
+                      <div className="text-xs text-gray-500">#{idx + 1}</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-red-700">{(course.passRate * 100).toFixed(1)}%</div>
-                    <div className="text-xs text-gray-500">#{idx + 1}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -360,7 +382,7 @@ const AdminOverview = () => {
       {Array.isArray(data?.bottlenecks) && data.bottlenecks.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-semibold text-gray-900">Top Bottlenecks</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Attention Required Categories</h3>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {data.bottlenecks.map((b, idx) => (

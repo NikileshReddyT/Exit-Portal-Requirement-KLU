@@ -30,20 +30,42 @@ const AdminCourses = () => {
       try {
         setLoading(true);
         setError('');
-        const base = `${config.backendUrl}/api/v1/admin/data/courses`;
         const params = new URLSearchParams();
-        
-        // For SUPER_ADMIN, use programId from context/URL if available
-        // For ADMIN, always use their assigned program
         if (user?.userType === 'SUPER_ADMIN' && programId) {
           params.append('programId', String(programId));
         } else if (user?.userType === 'ADMIN' && user?.programId) {
           params.append('programId', String(user.programId));
         }
-        
-        const url = params.toString() ? `${base}?${params}` : base;
-        const res = await axios.get(url, { withCredentials: true });
-        setRows(Array.isArray(res.data) ? res.data : []);
+
+        // Fetch courses and mappings to derive category names per course
+        const baseCourses = `${config.backendUrl}/api/v1/admin/data/courses`;
+        const baseMappings = `${config.backendUrl}/api/v1/admin/data/mappings`;
+        const qs = params.toString();
+        const [coursesRes, mappingsRes] = await Promise.all([
+          axios.get(qs ? `${baseCourses}?${qs}` : baseCourses, { withCredentials: true }),
+          axios.get(qs ? `${baseMappings}?${qs}` : baseMappings, { withCredentials: true }),
+        ]);
+
+        const courses = Array.isArray(coursesRes.data) ? coursesRes.data : [];
+        const mappings = Array.isArray(mappingsRes.data) ? mappingsRes.data : [];
+
+        const categoriesByCourse = mappings.reduce((acc, m) => {
+          const code = m?.courseCode;
+          const cat = m?.categoryName;
+          if (!code || !cat) return acc;
+          if (!acc[code]) acc[code] = new Set();
+          acc[code].add(String(cat));
+          return acc;
+        }, {});
+
+        const enriched = courses.map(c => {
+          const code = c?.courseCode || c?.code || c?.id;
+          const catSet = code ? categoriesByCourse[String(code)] : undefined;
+          const categoryNames = catSet ? Array.from(catSet) : [];
+          return { ...c, categoryNames };
+        });
+
+        setRows(enriched);
       } catch (e) {
         console.error(e);
         setError('Failed to load courses');
@@ -61,6 +83,34 @@ const AdminCourses = () => {
     if (code) navigate(`/admin/courses/${encodeURIComponent(String(code))}`);
   };
 
+  const columns = [
+    { key: 'courseCode', header: 'Course Code', className: 'text-center' },
+    { key: 'courseTitle', header: 'Course Title' },
+    { key: 'courseCredits', header: 'Credits', className: 'text-center' },
+    {
+      key: 'categoryNames',
+      header: 'Category',
+      render: (_val, row) => {
+        const list = Array.isArray(row?.categoryNames) ? row.categoryNames : [];
+        if (!list.length) return <span className="text-gray-400">—</span>;
+        return (
+          <div className="flex flex-wrap gap-1 justify-center">
+            {list.map((name) => (
+              <button
+                key={name}
+                className="btn inline-flex items-center px-2.5 py-1 rounded-full text-black hover:underline focus:outline-none focus:ring-2 focus:ring-red-300 "
+                onClick={(e) => { e.stopPropagation(); navigate(`/admin/categories/${encodeURIComponent(String(name))}`); }}
+                title={`View category ${name}`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        );
+      }
+    }
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -72,6 +122,7 @@ const AdminCourses = () => {
 
       <DataTable
         rows={rows}
+        columns={columns}
         onRowClick={handleRowClick}
         loading={loading}
         error={error}

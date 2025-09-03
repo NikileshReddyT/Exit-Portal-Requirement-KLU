@@ -5,6 +5,7 @@ import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import DataTable from '../../components/admin/DataTable';
+import { useMemo } from 'react';
 
 const AdminGrades = () => {
   const { user } = useAuth();
@@ -72,6 +73,18 @@ const AdminGrades = () => {
     load({ studentId: sId, category: cat, page: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, location.search, programId]);
+  const columns = useMemo(() => ([
+    { key: 'studentId', header: 'Student ID' },
+    { key: 'courseCode', header: 'Course Code' },
+    { key: 'courseName', header: 'Course Name' },
+    { key: 'credits', header: 'Credits', className: 'text-center' },
+    { key: 'grade', header: 'Grade', className: 'text-center' },
+    { key: 'gradePoint', header: 'Grade Point', className: 'text-center' },
+    { key: 'promotion', header: 'Promotion', className: 'text-center' },
+    { key: 'category', header: 'Category', },
+    { key: 'year', header: 'Year', className: 'text-center' },
+    { key: 'semester', header: 'Semester', className: 'text-center' },
+  ]), []);
 
   return (
     <div className="space-y-6">
@@ -83,6 +96,7 @@ const AdminGrades = () => {
       </div>
 
       <DataTable
+        columns={columns}
         rows={rows}
         serverSide
         page={page}

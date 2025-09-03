@@ -57,13 +57,13 @@ const AdminStudentDetails = () => {
   const gradesColumns = useMemo(() => ([
     { key: 'courseCode', header: 'Course Code' },
     { key: 'courseName', header: 'Course Name' },
-    { key: 'credits', header: 'Credits' },
-    { key: 'grade', header: 'Grade' },
-    { key: 'gradePoint', header: 'Grade Point' },
-    { key: 'category', header: 'Category' },
-    { key: 'year', header: 'Year' },
-    { key: 'semester', header: 'Semester' },
-    { key: 'promotion', header: 'Promotion' },
+    { key: 'credits', header: 'Credits', className: 'text-center' },
+    { key: 'grade', header: 'Grade', className: 'text-center' },
+    { key: 'gradePoint', header: 'Grade Point', className: 'text-center' },
+    { key: 'promotion', header: 'Promotion', className: 'text-center' },
+    { key: 'category', header: 'Category', },
+    { key: 'year', header: 'Year', className: 'text-center' },
+    { key: 'semester', header: 'Semester', className: 'text-center' },
   ]), []);
 
   return (

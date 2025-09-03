@@ -30,9 +30,7 @@ const AdminCategories = () => {
       try {
         setLoading(true);
         setError('');
-        const base = `${config.backendUrl}/api/v1/admin/data/categories`;
         const params = new URLSearchParams();
-        
         // For SUPER_ADMIN, use programId from context/URL if available
         // For ADMIN, always use their assigned program
         if (user?.userType === 'SUPER_ADMIN' && programId) {
@@ -40,10 +38,35 @@ const AdminCategories = () => {
         } else if (user?.userType === 'ADMIN' && user?.programId) {
           params.append('programId', String(user.programId));
         }
-        
-        const url = params.toString() ? `${base}?${params}` : base;
-        const res = await axios.get(url, { withCredentials: true });
-        setRows(Array.isArray(res.data) ? res.data : []);
+
+        const qs = params.toString();
+        const baseCategories = `${config.backendUrl}/api/v1/admin/data/categories`;
+        const baseRequirements = `${config.backendUrl}/api/v1/admin/data/requirements`;
+        const [catsRes, reqsRes] = await Promise.all([
+          axios.get(qs ? `${baseCategories}?${qs}` : baseCategories, { withCredentials: true }),
+          axios.get(qs ? `${baseRequirements}?${qs}` : baseRequirements, { withCredentials: true }),
+        ]);
+
+        const categories = Array.isArray(catsRes.data) ? catsRes.data : [];
+        const requirements = Array.isArray(reqsRes.data) ? reqsRes.data : [];
+        const reqByName = requirements.reduce((acc, r) => {
+          const name = r?.categoryName;
+          if (name) acc[String(name)] = { minCourses: r?.minCourses, minCredits: r?.minCredits };
+          return acc;
+        }, {});
+
+        const merged = categories.map(c => {
+          const name = c?.categoryName || c?.name;
+          const req = name ? reqByName[String(name)] : undefined;
+          return {
+            ...c,
+            categoryName: name,
+            minCourses: req?.minCourses ?? null,
+            minCredits: req?.minCredits ?? null,
+          };
+        });
+
+        setRows(merged);
       } catch (e) {
         console.error(e);
         setError('Failed to load categories');
@@ -61,6 +84,24 @@ const AdminCategories = () => {
     if (name) navigate(`/admin/categories/${encodeURIComponent(String(name))}`);
   };
 
+  const columns = [
+    {
+      key: 'categoryName',
+      header: 'Category',
+      render: (val) => (
+        <button
+          className=" btn inline-flex items-center px-2.5 py-1 rounded-full text-black hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+          onClick={(e) => { e.stopPropagation(); navigate(`/admin/categories/${encodeURIComponent(String(val))}`); }}
+          title={`View category ${val}`}
+        >
+          {val}
+        </button>
+      ),
+    },
+    { key: 'minCourses', header: 'Min Courses', className: 'text-center' },
+    { key: 'minCredits', header: 'Min Credits', className: 'text-center' },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -72,6 +113,7 @@ const AdminCategories = () => {
 
       <DataTable
         rows={rows}
+        columns={columns}
         onRowClick={handleRowClick}
         loading={loading}
         error={error}

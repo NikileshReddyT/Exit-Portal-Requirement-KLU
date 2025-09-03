@@ -93,62 +93,18 @@ const AdminProgress = () => {
         </div>
       )}
 
-      {/* Build filtered columns excluding ids and program fields, enforce desired order */}
+      {/* Explicit columns and labels per requirement */}
       <DataTable
-        columns={useMemo(() => {
-          if (!rows || rows.length === 0) return undefined;
-          const excluded = new Set([
-            // generic ids and student/program meta
-            'id', 'ID', 'Id',
-            'studentId', 'StudentId', 'studentID', 'StudentID',
-            'studentName', 'StudentName',
-            'programId', 'ProgramId', 'programID', 'ProgramID',
-            'programName', 'ProgramName',
-            'programCode', 'ProgramCode',
-            // category/course/mapping/requirement/university id variants
-            'categoryId', 'CategoryId', 'categoryID', 'CategoryID', 'category_id',
-            'courseId', 'CourseId', 'courseID', 'CourseID', 'course_id',
-            'requirementId', 'RequirementId', 'requirementID', 'RequirementID', 'requirement_id',
-            'mappingId', 'MappingId', 'mappingID', 'MappingID', 'mapping_id',
-            'universityId', 'UniversityId', 'universityID', 'UniversityID', 'university_id',
-          ]);
-          const isIdLike = (key) => {
-            // Keep camelCase explicit endings; avoid catching words like 'grid'
-            if (key.endsWith('Id') || key.endsWith('ID')) return true;
-            // snake_case ids
-            const lk = key.toLowerCase();
-            if (lk.endsWith('_id')) return true;
-            return false;
-          };
-          const allKeys = Object.keys(rows[0]).filter((k) => !excluded.has(k) && !isIdLike(k));
-          const lowerToActual = new Map(allKeys.map((k) => [k.toLowerCase(), k]));
-          const pick = (aliases) => {
-            for (const a of aliases) {
-              const found = lowerToActual.get(a.toLowerCase());
-              if (found) return found;
-            }
-            return null;
-          };
-          const priorityAliases = [
-            ['categoryName', 'category', 'category_name'],
-            ['minCourses', 'minimumCourses', 'min_courses', 'minimum_courses'],
-            ['completedCourses', 'completed_courses'],
-            ['minCredits', 'minimumCredits', 'min_credits', 'minimum_credits'],
-            ['completedCredits', 'completed_credits'],
-          ];
-          const ordered = [];
-          const used = new Set();
-          for (const aliases of priorityAliases) {
-            const key = pick(aliases);
-            if (key && !used.has(key)) {
-              ordered.push(key);
-              used.add(key);
-            }
-          }
-          // Append remaining keys in original order
-          for (const k of allKeys) if (!used.has(k)) ordered.push(k);
-          return ordered.map((k) => ({ key: k, header: k }));
-        }, [rows])}
+        columns={useMemo(() => (
+          [
+            { key: 'universityId', header: 'Student ID' },
+            { key: 'categoryName', header: 'Category' },
+            { key: 'minRequiredCourses', header: 'Required Courses', className: 'text-center' },
+            { key: 'completedCourses', header: 'Completed Courses', className: 'text-center' },
+            { key: 'minRequiredCredits', header: 'Required Credits', className: 'text-center' },
+            { key: 'completedCredits', header: 'Completed Credits', className: 'text-center' },
+          ]
+        ), [])}
         rows={rows}
         loading={loading}
         error={error}
