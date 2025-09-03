@@ -103,18 +103,20 @@ public interface StudentGradeRepository extends JpaRepository<StudentGrade, Long
 
     // ===== Course-level pass rates =====
     @Query("SELECT LOWER(c.courseCode) AS code,\n" +
+           "       c.courseTitle AS title,\n" +
            "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +
            "       COUNT(sg) AS totalCnt\n" +
            "FROM StudentGrade sg JOIN sg.course c\n" +
-           "GROUP BY LOWER(c.courseCode)")
+           "GROUP BY LOWER(c.courseCode), c.courseTitle")
     List<Object[]> aggregateCoursePassRates();
 
     @Query("SELECT LOWER(c.courseCode) AS code,\n" +
+           "       c.courseTitle AS title,\n" +
            "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +
            "       COUNT(sg) AS totalCnt\n" +
            "FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p\n" +
            "WHERE p.programId = :programId\n" +
-           "GROUP BY LOWER(c.courseCode)")
+           "GROUP BY LOWER(c.courseCode), c.courseTitle")
     List<Object[]> aggregateCoursePassRatesByProgram(@Param("programId") Long programId);
 
     // ===== Distinct student counts with any non-pass promotions (risk indicator) =====

@@ -98,7 +98,7 @@ const AdminOverview = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { selectedProgramId, programInfo, setProgramContext } = useProgramContext();
+  const { selectedProgramId, programInfo } = useProgramContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
@@ -144,58 +144,21 @@ const AdminOverview = () => {
         
         
         const res = await axios.get(apiUrl, { withCredentials: true });
-        
-        if (isCancelled) return; // Prevent state update if component unmounted or effect cancelled
-        
-        setData(res.data || {});
-        
-        // Fetch overview insights
-        const baseCourses = `${config.backendUrl}/api/v1/admin/data/courses`;
-        const coursesUrl = effectiveProgramId ? `${baseCourses}?programId=${effectiveProgramId}` : baseCourses;
-        const insightPromises = [
-          axios.get(`${config.backendUrl}/api/v1/admin/overview/risk${effectiveProgramId ? `?programId=${effectiveProgramId}` : ''}`, { withCredentials: true }),
-          axios.get(`${config.backendUrl}/api/v1/admin/overview/courses/leaderboard?limit=5${effectiveProgramId ? `&programId=${effectiveProgramId}` : ''}`, { withCredentials: true }),
-          axios.get(coursesUrl, { withCredentials: true }),
-        ];
-        
-        try {
-          const [riskRes, leaderboardRes, coursesRes] = await Promise.all(insightPromises);
-          if (!isCancelled) {
-            const courseList = Array.isArray(coursesRes.data) ? coursesRes.data : [];
-            const titleByCode = courseList.reduce((acc, c) => {
-              const code = c?.courseCode;
-              const title = c?.courseTitle || c?.courseName || '';
-              if (code) acc[String(code).toUpperCase()] = title;
-              return acc;
-            }, {});
-            const addTitles = (arr) => Array.isArray(arr) ? arr.map((it) => {
-              const codeKey = String(it?.courseCode || '').toUpperCase();
-              return { ...it, courseTitle: it?.courseTitle || it?.courseName || titleByCode[codeKey] || '' };
-            }) : [];
 
-            const lb = leaderboardRes?.data || {};
-            const leaders = addTitles(lb.leaders);
-            const laggards = addTitles(lb.laggards);
-            setInsights({
-              risk: riskRes.data,
-              courseLeaderboard: { leaders, laggards },
-            });
-          }
-        } catch (insightErr) {
-          console.error('Failed to load insights:', insightErr);
-        }
+        if (isCancelled) return; // Prevent state update if component unmounted or effect cancelled
+
+        const dash = res.data || {};
+        setData(dash);
+
+        // Use insights bundled in dashboard; avoid any extra API calls
+        const lbRaw = dash?.courseLeaderboard || {};
+        const riskRaw = dash?.risk || null;
+        setInsights({
+          risk: riskRaw,
+          courseLeaderboard: { leaders: lbRaw.leaders || [], laggards: lbRaw.laggards || [] },
+        });
         
-        // Fetch program details if we have an effective program ID and don't have current program info
-        if (effectiveProgramId && (!programInfo || programInfo.programId != effectiveProgramId)) {
-          try {
-            const programRes = await axios.get(`${config.backendUrl}/api/v1/admin/programs/${effectiveProgramId}`, { withCredentials: true });
-            if (!isCancelled) {
-              setProgramContext(effectiveProgramId, programRes.data);
-            }
-          } catch (progErr) {
-            console.error('Failed to load program info:', progErr);
-          }
-        }
+        // No separate program details fetch; dashboard includes programCode/programName when scoped
       } catch (e) {
         if (!isCancelled) {
           console.error(e);
@@ -213,7 +176,7 @@ const AdminOverview = () => {
     return () => {
       isCancelled = true;
     };
-  }, [user, navigate, programId, setProgramContext]);
+  }, [user, programId]);
 
   if (loading) {
     return (
@@ -236,6 +199,7 @@ const AdminOverview = () => {
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
   const totalStudents = data?.stats?.totalStudents ?? 0;
   const catSummaries = Array.isArray(data?.categorySummaries) ? data.categorySummaries : [];
+  const headerProgramCode = programInfo?.code || data?.programCode || null;
   // Stats display (fallback to provided snapshot when API not available)
   const statsDisplay = {
     totalStudents: data?.stats?.totalStudents ?? 293,
@@ -249,7 +213,7 @@ const AdminOverview = () => {
       
       <div>
         <h2 className="text-2xl font-bold text-gray-900">
-          {programInfo ? `${programInfo.code} - Overview` : 'Overview'} {totalStudents > 0 && `( ${totalStudents} students )`}
+          {headerProgramCode ? `${headerProgramCode} - Overview` : 'Overview'} {totalStudents > 0 && `( ${totalStudents} students )`}
         </h2>
         <p className="text-sm text-gray-600">
           {programInfo ? `Program-specific snapshot and navigation` : `${user?.programName ? user.programName + ' - ' : ''}Program snapshot and quick navigation`}
@@ -329,7 +293,7 @@ const AdminOverview = () => {
               {insights.courseLeaderboard.leaders?.slice(0, 5).map((course, idx) => {
                 const code = (course.courseCode || '').toUpperCase();
                 const title = course.courseTitle || course.courseName || '';
-                const go = () => navigate(`/admin/courses/${encodeURIComponent(String(course.courseCode))}${programId ? '' : ''}`);
+                const go = () => navigate(`${basePath}/courses/${encodeURIComponent(String(course.courseCode))}${programId ? `?programId=${programId}` : ''}`);
                 return (
                                   <div key={course.courseCode} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200 hover:bg-green-100 transition-colors cursor-pointer" onClick={go}>
                   <div className="flex-1">
@@ -357,7 +321,7 @@ const AdminOverview = () => {
               {insights.courseLeaderboard.laggards?.slice(0, 5).map((course, idx) => {
                 const code = (course.courseCode || '').toUpperCase();
                 const title = course.courseTitle || '';
-                const go = () => navigate(`/admin/courses/${encodeURIComponent(String(course.courseCode))}${programId ? '' : ''}`);
+                const go = () => navigate(`${basePath}/courses/${encodeURIComponent(String(course.courseCode))}${programId ? `?programId=${programId}` : ''}`);
                 return (
                   <div key={course.courseCode} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100 transition-colors cursor-pointer" onClick={go}>
                     <div className="flex-1">

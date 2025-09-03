@@ -138,7 +138,7 @@ const AdminCourseDetails = () => {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Course: {courseCode}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Course: {courseCode.toUpperCase()}</h2>
           <p className="text-sm text-gray-600">Course information and related data</p>
         </div>
         <button className="px-3 py-2 border rounded" onClick={() => navigate('/admin/courses')}>Back</button>
@@ -150,7 +150,7 @@ const AdminCourseDetails = () => {
           rows={courseRows}
           columns={[
             { key: 'courseCode', header: 'Course Code', className: 'text-center' },
-            { key: 'courseTitle', header: 'Course Title' },
+            { key: 'courseTitle', header: 'Course Title', className: 'text-center' },
             { key: 'courseCredits', header: 'Credits', className: 'text-center' },
             {
               key: 'categoryNames',
@@ -159,11 +159,11 @@ const AdminCourseDetails = () => {
                 const list = Array.isArray(row?.categoryNames) ? row.categoryNames : [];
                 if (!list.length) return <span className="text-gray-400">—</span>;
                 return (
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 justify-center">
                     {list.map((name) => (
                       <button
                         key={name}
-                        className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        className="btn inline-flex items-center px-2.5 py-1 rounded-full text-black hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300"
                         onClick={(e) => { e.stopPropagation(); navigate(`/admin/categories/${encodeURIComponent(String(name))}`); }}
                         title={`View category ${name}`}
                       >

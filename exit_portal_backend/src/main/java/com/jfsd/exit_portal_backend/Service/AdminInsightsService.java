@@ -640,11 +640,16 @@ public class AdminInsightsService {
                 : studentGradeRepository.aggregateCoursePassRates();
         List<Map<String, Object>> items = rows.stream().map(r -> {
             String code = String.valueOf(r[0]);
-            long pass = ((Number) r[1]).longValue();
-            long total = ((Number) r[2]).longValue();
+            String title = r.length > 1 && r[1] != null ? String.valueOf(r[1]) : null;
+            // shift indices because title is now at index 1
+            long pass = ((Number) r[2]).longValue();
+            long total = ((Number) r[3]).longValue();
             double rate = total > 0 ? (double) pass / (double) total : 0.0;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("courseCode", code);
+            if (title != null && !title.isBlank()) {
+                m.put("courseTitle", title);
+            }
             m.put("passCnt", pass);
             m.put("totalCnt", total);
             m.put("passRate", Math.round(rate * 1000.0) / 1000.0);
