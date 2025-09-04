@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import config from '../config';
 
 const ProgramContext = createContext();
 
@@ -38,8 +39,38 @@ export const ProgramProvider = ({ children }) => {
         setProgramInfo(null); 
         sessionStorage.setItem('selectedProgramId', urlProgramId);
         sessionStorage.removeItem('programInfo');
+    } else if (urlProgramCode) {
+      // When only programCode is provided in the URL (no programId), hydrate programInfo.code
+      // so that upload pages can immediately use the code without waiting for a fetch.
+      if (!programInfo || programInfo.code !== urlProgramCode) {
+        const updated = { ...(programInfo || {}), code: urlProgramCode };
+        setProgramInfo(updated);
+        sessionStorage.setItem('programInfo', JSON.stringify(updated));
+      }
     }
-  }, [location.search, selectedProgramId]);
+  }, [location.search, selectedProgramId, programInfo]);
+
+  // Lazy hydrate programInfo from backend when we know selectedProgramId but don't yet have info
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (selectedProgramId && (!programInfo || !programInfo.code)) {
+        try {
+          const res = await fetch(`${config.backendUrl}/api/v1/admin/programs/${selectedProgramId}`, {
+            credentials: 'include',
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (!cancelled) {
+            setProgramInfo(data);
+            sessionStorage.setItem('programInfo', JSON.stringify(data));
+          }
+        } catch {}
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [selectedProgramId]);
 
   const setProgramContext = (programId, programData) => {
     
@@ -78,3 +109,4 @@ export const ProgramProvider = ({ children }) => {
     </ProgramContext.Provider>
   );
 };
+

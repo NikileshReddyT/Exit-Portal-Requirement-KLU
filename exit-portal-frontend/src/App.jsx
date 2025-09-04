@@ -16,6 +16,7 @@ import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseDetails from './pages/admin/AdminCourseDetails';
 import AdminGrades from './pages/admin/AdminGrades';
 import AdminProgress from './pages/admin/AdminProgress';
+import AdminStudentReport from './pages/admin/AdminStudentReport';
 import AdminInsights from './pages/admin/AdminInsights';
 import AdminDataUpload from './pages/admin/AdminDataUpload';
 import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
@@ -65,6 +66,7 @@ function App() {
           <Route path='courses/:courseCode' element={<AdminCourseDetails />} />
           <Route path='grades' element={<AdminGrades />} />
           <Route path='progress' element={<AdminProgress />} />
+          <Route path='report' element={<AdminStudentReport />} />
           <Route path='upload' element={<AdminDataUpload />} />
           {/* <Route path='upload/categories' element={<CategoriesUpload />} /> */}
           {/* <Route path='upload/courses' element={<CoursesUpload />} /> */}
@@ -90,6 +92,7 @@ function App() {
           <Route path='courses/:courseCode' element={<AdminCourseDetails />} />
           <Route path='grades' element={<AdminGrades />} />
           <Route path='progress' element={<AdminProgress />} />
+          <Route path='report' element={<AdminStudentReport />} />
           <Route path='users' element={<AdminUsers />} />
           <Route path='upload' element={<AdminDataUpload />} />
           {/* <Route path='upload/categories' element={<CategoriesUpload />} /> */}

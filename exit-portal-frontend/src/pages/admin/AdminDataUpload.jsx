@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useProgramContext } from '../../context/ProgramContext';
 import { FiChevronRight, FiFilePlus, FiLayers, FiUploadCloud, FiInfo, FiCheckCircle } from 'react-icons/fi';
 
 // Card rendered as a div to avoid global <button> styles
@@ -29,7 +30,12 @@ const Card = ({ title, desc, icon, onClick, accent = '' }) => (
 const AdminDataUpload = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { programInfo } = useProgramContext();
   const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
+  const urlParams = new URLSearchParams(location.search);
+  const urlProgramCode = urlParams.get('programCode');
+  const effectiveProgramCode = urlProgramCode || programInfo?.code || null;
+  const searchToUse = effectiveProgramCode ? `?programCode=${encodeURIComponent(effectiveProgramCode)}` : (location.search || '');
 
   return (
     <div className="space-y-8">
@@ -89,21 +95,21 @@ const AdminDataUpload = () => {
           desc="Single CSV to define categories and courses. Run this first to establish structure."
           icon={<FiLayers className="text-red-700" />}
           accent="border-red-200 hover:border-red-300"
-          onClick={() => navigate(`${basePath}/upload/combined`)}
+          onClick={() => navigate(`${basePath}/upload/combined${searchToUse}`)}
         />
         <Card
           title="Student Results Upload"
           desc="CSV of results per student and course. Supports default credits and validation summaries."
           icon={<FiUploadCloud className="text-red-700" />}
           accent="border-red-200 hover:border-red-300"
-          onClick={() => navigate(`${basePath}/upload/results`)}
+          onClick={() => navigate(`${basePath}/upload/results${searchToUse}`)}
         />
         <Card
           title="Registrations Upload"
           desc="CSV listing which students registered for which courses per term and year."
           icon={<FiFilePlus className="text-red-700" />}
           accent="border-red-200 hover:border-red-300"
-          onClick={() => navigate(`${basePath}/upload/registrations`)}
+          onClick={() => navigate(`${basePath}/upload/registrations${searchToUse}`)}
         />
       </div>
 

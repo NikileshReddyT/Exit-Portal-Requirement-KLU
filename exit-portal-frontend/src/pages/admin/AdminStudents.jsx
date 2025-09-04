@@ -155,6 +155,15 @@ const AdminStudents = () => {
               >
                 By Category
               </button>
+              <button
+                className="px-4 py-2 rounded-lg border border-red-900 text-red-900 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-900/30"
+                onClick={() => {
+                  const qp = `?studentId=${encodeURIComponent(selected.id)}`;
+                  navigate(`${basePath}/report${qp}`);
+                }}
+              >
+                Report
+              </button>
             </div>
           </div>
         </div>

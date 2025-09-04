@@ -6,7 +6,7 @@ import config from "../../config";
 import { FiDownload, FiLoader } from 'react-icons/fi';
 
 
-const PdfDownloadButton = ({ studentId }) => {
+const PdfDownloadButton = ({ studentId, wrapperClassName = "flex justify-center mt-6" }) => {
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
 
@@ -372,15 +372,15 @@ const PdfDownloadButton = ({ studentId }) => {
   
 
   return (
-    <div className="flex justify-center mt-6">
+    <div className={wrapperClassName}>
       <button
         onClick={generatePDF}
         disabled={loading || !reportData}
-        className="bg-red-800 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transform hover:scale-105 shadow-md hover:shadow-lg"
+        className="bg-red-800 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-600 ease-in-out flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed transform shadow-md hover:shadow-lg"
       >
         {loading
           ? <><FiLoader className="animate-spin" /> Loading Report...</>
-          : <><FiDownload /> Download PDF</>
+          : <><FiDownload /> Download Acedemic Report</>
         }
       </button>
     </div>
