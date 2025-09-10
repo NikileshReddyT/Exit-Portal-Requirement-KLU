@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useProgramContext } from '../../../context/ProgramContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { FiUpload, FiBarChart2, FiAlertCircle, FiCheckCircle, FiDownload } from 'react-icons/fi';
 import config from '../../../config';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const ResultsUpload = () => {
   const { selectedProgramId, programInfo } = useProgramContext();
   const location = useLocation();
+  const navigate = useNavigate();
   const urlParams = new URLSearchParams(location.search);
   const urlProgramCode = urlParams.get('programCode');
   const programCode = urlProgramCode || programInfo?.code || null;
@@ -15,6 +17,40 @@ const ResultsUpload = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [error, setError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dropFeedback, setDropFeedback] = useState(null); // 'accepted' | 'rejected' | null
+  const [showUploader, setShowUploader] = useState(true);
+  const overlayActive = uploading || !!uploadResult;
+
+  // Global drag overlay handlers
+  useEffect(() => {
+    const onDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+    const onDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+    const onDrop = (e) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const f = e.dataTransfer?.files?.[0];
+      if (f) {
+        const isCsv = f.type === 'text/csv' || f.type?.includes('csv') || f.name?.toLowerCase().endsWith('.csv');
+        setDropFeedback(isCsv ? 'accepted' : 'rejected');
+        setTimeout(() => setDropFeedback(null), 1200);
+        if (isCsv) {
+          setFile(f);
+          setError('');
+          setUploadResult(null);
+          setShowUploader(true);
+        }
+      }
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -27,6 +63,7 @@ const ResultsUpload = () => {
       setFile(selectedFile);
       setError('');
       setUploadResult(null);
+      setShowUploader(true);
     } else {
       setError('Please select a valid CSV file');
       setFile(null);
@@ -40,6 +77,7 @@ const ResultsUpload = () => {
     }
 
     setUploading(true);
+    setShowUploader(false);
     setError('');
 
     const formData = new FormData();
@@ -56,20 +94,50 @@ const ResultsUpload = () => {
         credentials: 'include'
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      let succeeded = false;
       if (response.ok) {
-        const result = await response.text();
-        setUploadResult({ success: true, message: result });
+        let messages = [];
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          messages = Array.isArray(data) ? data : [JSON.stringify(data)];
+        } else {
+          const txt = await response.text();
+          try { messages = JSON.parse(txt); } catch { messages = txt.split(/\n+/).filter(Boolean); }
+        }
+        // Extract stats and warnings
+        const stats = { created: 0, updated: 0 };
+        const warnings = [];
+        messages.forEach(m => {
+          const mStr = String(m);
+          const re = /Results CSV processed\.[^\d]*(Created|created):\s*(\d+)\s*,\s*(Updated|updated):\s*(\d+)/;
+          const match = re.exec(mStr);
+          if (match) {
+            stats.created = Number(match[2]);
+            stats.updated = Number(match[4]);
+          }
+          if (/^Skipped/i.test(mStr)) warnings.push(mStr);
+        });
+        setUploadResult({ success: true, message: 'Upload completed', lines: messages, stats, warnings });
+        succeeded = true;
         setFile(null);
         setDefaultCredits('');
         document.getElementById('file-input').value = '';
       } else {
-        const errorText = await response.text();
-        setError(errorText || 'Upload failed');
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          const msg = Array.isArray(data) ? data.join('\n') : (data.message || JSON.stringify(data));
+          setError(msg || 'Upload failed');
+        } else {
+          const errorText = await response.text();
+          setError(errorText || 'Upload failed');
+        }
       }
     } catch (err) {
       setError('Network error occurred during upload');
     } finally {
       setUploading(false);
+      if (!succeeded) setShowUploader(true);
     }
   };
 
@@ -90,7 +158,109 @@ const ResultsUpload = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto md:p-6">
+    <div className="relative max-w-4xl mx-auto md:p-6">
+      {/* Big status overlay for uploading/completed */}
+      <AnimatePresence>
+        {overlayActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.98, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.98, opacity: 0 }}
+              className="relative w-full max-w-2xl mx-4 rounded-2xl bg-white p-6 shadow-2xl"
+            >
+              {/* Close to Uploads */}
+              <button
+                type="button"
+                onClick={() => navigate('/admin/upload')}
+                className="absolute top-3 right-3 rounded-md px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700"
+                aria-label="Back to Uploads"
+              >
+                Close
+              </button>
+              {uploading ? (
+                <div className="text-center">
+                  <div className="mx-auto mb-4 h-12 w-12 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
+                  <h2 className="text-xl font-semibold text-gray-900">Uploading...</h2>
+                  <p className="text-gray-700 mt-1">Please wait while we process your file.</p>
+                </div>
+              ) : (
+                uploadResult && (
+                  <div>
+                    <div className="flex items-center justify-center gap-3 mb-4">
+                      <FiCheckCircle className="h-10 w-10 text-green-600" />
+                      <h2 className="text-xl font-semibold text-gray-900">Upload completed</h2>
+                    </div>
+                    {uploadResult.stats && (
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                        <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                          <div className="font-medium text-gray-900">Created</div>
+                          <div className="text-gray-700">{uploadResult.stats.created}</div>
+                        </div>
+                        <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                          <div className="font-medium text-gray-900">Updated</div>
+                          <div className="text-gray-700">{uploadResult.stats.updated}</div>
+                        </div>
+                      </div>
+                    )}
+                    {uploadResult.warnings && uploadResult.warnings.length > 0 && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 my-3">
+                        <div className="text-sm font-medium text-yellow-900 mb-1">Warnings</div>
+                        <ul className="list-disc pl-5 text-sm text-yellow-900 space-y-1 max-h-40 overflow-auto">
+                          {uploadResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {Array.isArray(uploadResult.lines) && uploadResult.lines.length > 0 && (
+                      <ul className="list-disc pl-5 text-sm text-gray-800 space-y-1 mt-3 max-h-64 overflow-auto">
+                        {uploadResult.lines.map((ln, i) => (
+                          <li key={i}>{ln}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="mt-5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => { setUploadResult(null); setShowUploader(true); setError(''); }}
+                        className="px-4 py-2 rounded-md text-sm bg-orange-600 text-white hover:bg-orange-700"
+                      >
+                        Upload another file
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Full-screen drag overlay */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.98 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.98 }}
+              className={`mx-4 w-full max-w-xl rounded-2xl border-2 ${dropFeedback === 'accepted' ? 'border-green-400 bg-green-50' : dropFeedback === 'rejected' ? 'border-red-400 bg-red-50' : 'border-dashed border-white/70 bg-white/80'} p-8 text-center shadow-xl`}
+            >
+              <FiUpload className={`mx-auto h-10 w-10 ${dropFeedback === 'rejected' ? 'text-red-500' : 'text-orange-600'}`} />
+              <div className="mt-3 text-lg font-semibold text-gray-900">Drop CSV anywhere to upload</div>
+              <div className="text-sm text-gray-700">{dropFeedback === 'rejected' ? 'Only .csv files are supported' : 'Template headers required for best results'}</div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="bg-white rounded-lg shadow-lg">
         <div className="border-b border-gray-200 px-6 py-4">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -105,44 +275,65 @@ const ResultsUpload = () => {
         </div>
 
         <div className="p-6">
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
-            <h3 className="font-medium text-orange-900 mb-2">Upload Instructions</h3>
-            <ul className="text-sm text-orange-800 space-y-1">
-              <li>• Upload a CSV file containing student results and grades from ERP</li>
-              <li>• Required columns: Match with the template</li>
-              {/* <li>• Course columns should follow format: Grade|Credits|Type (e.g., A+|4|1-mandatory)</li> */}
-              <li>• File size limit: 10MB </li>
-              <li>• Results will be associated with the current program</li>
-            </ul>
-          </div>
+          {/* Loader during uploading */}
+          <AnimatePresence>
+            {!overlayActive && uploading && (
+              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="mb-6">
+                <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div className="h-5 w-5 border-2 border-orange-600 border-t-transparent rounded-full animate-spin" />
+                  <div className="text-orange-900 text-sm">Uploading... Please wait while we process your file.</div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div className="mb-6 flex justify-center md:justify-start">
-            <button
-              onClick={downloadTemplate}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
-            >
-              <FiDownload className="h-4 w-4" />
-              Download Template
-            </button>
-          </div>
+          {!uploading && showUploader && (
+            <>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                <h3 className="font-medium text-orange-900 mb-2">Upload Instructions</h3>
+                <ul className="text-sm text-orange-800 space-y-1">
+                  <li>• Upload a CSV file containing student results and grades from ERP</li>
+                  <li>• Required columns: Match with the template</li>
+                  {/* <li>• Course columns should follow format: Grade|Credits|Type (e.g., A+|4|1-mandatory)</li> */}
+                  <li>• File size limit: 10MB </li>
+                  <li>• Results will be associated with the current program</li>
+                </ul>
+              </div>
+
+              <div className="mb-6 flex justify-center md:justify-start">
+                <button
+                  onClick={downloadTemplate}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                >
+                  <FiDownload className="h-4 w-4" />
+                  Download Template
+                </button>
+              </div>
+            </>
+          )}
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Credits (Optional)
-              </label>
-              <input
-                type="number"
-                value={defaultCredits}
-                onChange={(e) => setDefaultCredits(e.target.value)}
-                placeholder="Enter default credits for courses without credit info"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                This will be used for courses that don't have credit information in the CSV
-              </p>
-            </div>
+            {showUploader && !uploading && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Default Credits (Optional)
+                </label>
+                <input
+                  type="number"
+                  value={defaultCredits}
+                  onChange={(e) => setDefaultCredits(e.target.value)}
+                  placeholder="Enter default credits for courses without credit info"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This will be used for courses that don't have credit information in the CSV
+                </p>
+              </div>
+            )}
 
+            <AnimatePresence>
+            {showUploader && !uploading && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select CSV File
@@ -192,8 +383,11 @@ const ResultsUpload = () => {
                 )}
               </div>
             </div>
+            </motion.div>
+            )}
+            </AnimatePresence>
 
-            {file && (
+            {showUploader && !uploading && file && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                 <p className="text-sm text-green-800">
                   Selected file: <span className="font-medium">{file.name}</span>
@@ -202,56 +396,79 @@ const ResultsUpload = () => {
               </div>
             )}
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
-                <FiAlertCircle className="h-4 w-4 text-red-600" />
-                <p className="text-sm text-red-800">{error}</p>
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+                  <FiAlertCircle className="h-4 w-4 text-red-600" />
+                  <p className="text-sm text-red-800">{error}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            {uploadResult && (
-              <div className={`border rounded-lg p-3 flex items-center gap-2 ${
-                uploadResult.success 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-red-50 border-red-200'
-              }`}>
-                <FiCheckCircle className={`h-4 w-4 ${
-                  uploadResult.success ? 'text-green-600' : 'text-red-600'
-                }`} />
-                <p className={`text-sm ${
-                  uploadResult.success ? 'text-green-800' : 'text-red-800'
-                }`}>
-                  {uploadResult.message}
-                </p>
-              </div>
+            <AnimatePresence>
+            {!overlayActive && uploadResult && (
+              <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className={`border rounded-lg p-4 ${uploadResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <FiCheckCircle className={`h-4 w-4 ${uploadResult.success ? 'text-green-600' : 'text-red-600'}`} />
+                  <p className={`text-sm ${uploadResult.success ? 'text-green-800' : 'text-red-800'}`}>{uploadResult.message}</p>
+                </div>
+                {uploadResult.warnings && uploadResult.warnings.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-3">
+                    <div className="text-sm font-medium text-yellow-900 mb-1">Warnings</div>
+                    <ul className="list-disc pl-5 text-sm text-yellow-900 space-y-1">
+                      {uploadResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {uploadResult.stats && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="bg-white/60 border border-green-200 rounded-md p-3">
+                      <div className="font-medium text-gray-900">Created</div>
+                      <div className="text-gray-700">{uploadResult.stats.created}</div>
+                    </div>
+                    <div className="bg-white/60 border border-green-200 rounded-md p-3">
+                      <div className="font-medium text-gray-900">Updated</div>
+                      <div className="text-gray-700">{uploadResult.stats.updated}</div>
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(uploadResult.lines) && uploadResult.lines.length > 0 && (
+                  <ul className="list-disc pl-5 text-sm text-gray-800 space-y-1 mt-3">
+                    {uploadResult.lines.map((ln, i) => (
+                      <li key={i}>{ln}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setUploadResult(null); setShowUploader(true); setError(''); }}
+                    className="px-3 py-2 rounded-md text-sm bg-white border hover:bg-gray-50"
+                  >
+                    Upload another file
+                  </button>
+                </div>
+              </motion.div>
             )}
+            </AnimatePresence>
 
-            {uploading && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
-                <FiAlertCircle className="h-4 w-4 text-blue-600" />
-                <p className="text-sm text-blue-800">
-                  Processing may take a few seconds to minutes. Please wait and do not close this tab.
-                </p>
-              </div>
-            )}
+            {/* Removed duplicate uploading notice; loader above replaces this */}
 
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              {uploading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Uploading...
-                </>
-              ) : (
-                <>
+            <AnimatePresence>
+              {showUploader && !uploading && (
+                <motion.button
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  onClick={handleUpload}
+                  disabled={uploading || !file}
+                  className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
                   <FiUpload className="h-4 w-4" />
                   Upload Results
-                </>
+                </motion.button>
               )}
-            </button>
+            </AnimatePresence>
           </div>
         </div>
       </div>

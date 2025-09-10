@@ -4,7 +4,15 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "student_category_progress")
+@Table(
+    name = "student_category_progress",
+    indexes = {
+        @Index(name = "idx_scp_university", columnList = "university_id"),
+        @Index(name = "idx_scp_category_name", columnList = "category_name"),
+        @Index(name = "idx_scp_program", columnList = "program_id"),
+        @Index(name = "idx_scp_program_category", columnList = "program_id, category_id")
+    }
+)
 @JsonPropertyOrder({
         "universityId",
         "studentName",

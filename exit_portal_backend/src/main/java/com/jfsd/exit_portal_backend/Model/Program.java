@@ -3,7 +3,13 @@ package com.jfsd.exit_portal_backend.Model;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "programs")
+@Table(
+    name = "programs",
+    indexes = {
+        @Index(name = "idx_program_code", columnList = "code", unique = true),
+        @Index(name = "idx_program_name", columnList = "name")
+    }
+)
 public class Program {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

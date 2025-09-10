@@ -3,8 +3,15 @@ package com.jfsd.exit_portal_backend.Model;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "program_category_requirement", 
-       uniqueConstraints = @UniqueConstraint(columnNames = {"program_id", "category_id"}))
+@Table(
+    name = "program_category_requirement",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"program_id", "category_id"}),
+    indexes = {
+        @Index(name = "idx_pcr_program", columnList = "program_id"),
+        @Index(name = "idx_pcr_category", columnList = "category_id"),
+        @Index(name = "idx_pcr_program_category", columnList = "program_id, category_id")
+    }
+)
 public class ProgramCategoryRequirement {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

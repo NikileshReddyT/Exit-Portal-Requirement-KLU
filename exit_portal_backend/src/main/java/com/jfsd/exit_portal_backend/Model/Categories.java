@@ -5,11 +5,19 @@ import jakarta.persistence.*;
 import java.util.Objects;
 
 @Entity
-@Table(name = "categories")
+@Table(
+    name = "categories",
+    indexes = {
+        @Index(name = "idx_categories_program", columnList = "program_id"),
+        @Index(name = "idx_categories_name", columnList = "category_name"),
+        @Index(name = "idx_categories_program_name", columnList = "program_id, category_name")
+    }
+)
 public class Categories {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "categoryID")
     private int categoryID;
 
     @ManyToOne

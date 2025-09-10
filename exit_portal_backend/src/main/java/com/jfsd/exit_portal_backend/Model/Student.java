@@ -3,7 +3,14 @@ package com.jfsd.exit_portal_backend.Model;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "students")
+@Table(
+    name = "students",
+    indexes = {
+        @Index(name = "idx_students_program", columnList = "program_id"),
+        @Index(name = "idx_students_name", columnList = "student_name"),
+        @Index(name = "idx_students_program_name", columnList = "program_id, student_name")
+    }
+)
 public class Student {
 
     @Id

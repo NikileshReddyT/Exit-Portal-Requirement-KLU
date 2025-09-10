@@ -3,7 +3,19 @@ package com.jfsd.exit_portal_backend.Model;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "student_grades")
+@Table(
+    name = "student_grades",
+    indexes = {
+        @Index(name = "idx_sg_university", columnList = "university_id"),
+        @Index(name = "idx_sg_course", columnList = "course_id"),
+        @Index(name = "idx_sg_university_category", columnList = "university_id, category"),
+        @Index(name = "idx_sg_course_promotion", columnList = "course_id, promotion"),
+        @Index(name = "idx_sg_category", columnList = "category"),
+        @Index(name = "idx_sg_promotion", columnList = "promotion"),
+        @Index(name = "idx_sg_year_sem", columnList = "academic_year, semester")
+    },
+    uniqueConstraints = @UniqueConstraint(name = "uq_student_grades_uid_course", columnNames = {"university_id", "course_id"})
+)
 public class StudentGrade {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

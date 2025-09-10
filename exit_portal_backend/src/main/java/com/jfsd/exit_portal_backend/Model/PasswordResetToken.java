@@ -4,6 +4,14 @@ import jakarta.persistence.*;
 import java.util.Date;
 
 @Entity
+@Table(
+    name = "password_reset_token",
+    indexes = {
+        @Index(name = "idx_prt_token", columnList = "token"),
+        @Index(name = "idx_prt_student", columnList = "student_id"),
+        @Index(name = "idx_prt_expiry", columnList = "expiryDate")
+    }
+)
 public class PasswordResetToken {
 
     @Id

@@ -21,10 +21,14 @@ const AdminCourseDetails = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState('');
 
-  // Get programId from URL params or context (for SUPER_ADMIN); for ADMIN use their programId
+  // Determine effective programId
+  // SUPER_ADMIN: prefer programId from URL (if provided), else fall back to selectedProgramId
+  // ADMIN: use their own programId; fall back to selectedProgramId if needed
   const urlParams = new URLSearchParams(location.search);
   const urlProgramId = urlParams.get('programId');
-  const programId = selectedProgramId || urlProgramId;
+  const programId = (user?.userType === 'SUPER_ADMIN')
+    ? (urlProgramId || selectedProgramId)
+    : (user?.programId || selectedProgramId);
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
@@ -36,10 +40,8 @@ const AdminCourseDetails = () => {
         setLoading(true);
         setError('');
         const params = new URLSearchParams();
-        if (user?.userType === 'SUPER_ADMIN' && programId) {
+        if (programId) {
           params.append('programId', String(programId));
-        } else if (user?.userType === 'ADMIN' && user?.programId) {
-          params.append('programId', String(user.programId));
         }
         const qs = params.toString();
         const baseCourses = `${config.backendUrl}/api/v1/admin/data/courses`;
