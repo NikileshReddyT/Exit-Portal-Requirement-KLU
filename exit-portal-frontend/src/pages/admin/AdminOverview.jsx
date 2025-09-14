@@ -9,14 +9,14 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 
 // Reusable quick link button
 const QuickLink = ({ to, label, onClick }) => (
-  <button onClick={onClick} className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 shadow-sm">
+  <button onClick={onClick} className="btn px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 shadow-sm">
     {label}
   </button>
 );
 
 // Responsive horizontal bar chart for category met rate (0-100%)
 // Dark neon style with rounded bars and glow
-const CategoryPerformanceChart = ({ data = [] }) => {
+const CategoryPerformanceChart = ({ data = [], onBarClick = () => {} }) => {
   const sorted = [...data]
     .map((c) => ({ name: c.category, value: Math.round(Math.max(0, Math.min(1, c.metRate ?? 0)) * 100), rate: c.metRate ?? 0 }))
     .sort((a, b) => b.value - a.value);
@@ -33,11 +33,23 @@ const CategoryPerformanceChart = ({ data = [] }) => {
   const innerHeight = Math.max(200, Math.min(900, sorted.length * rowH + 60));
 
   const NeonBar = (props) => {
-    const { x, y, width, height, fill } = props;
+    const { x, y, width, height, fill, ...rest } = props;
     const w = Math.max(0, width);
     return (
       <g>
-        <rect x={x} y={y} width={w} height={height} rx={9} ry={9} fill={fill} filter="url(#glow)" />
+        {/* Forward event handlers like onClick so bars are clickable even with custom shape */}
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={height}
+          rx={9}
+          ry={9}
+          fill={fill}
+          filter="url(#glow)"
+          style={{ cursor: 'pointer' }}
+          {...rest}
+        />
       </g>
     );
   };
@@ -81,9 +93,24 @@ const CategoryPerformanceChart = ({ data = [] }) => {
               labelStyle={{ color: '#334155' }}
               itemStyle={{ color: '#0f172a' }}
             />
-            <Bar dataKey="value" shape={<NeonBar />} background={{ fill: 'rgba(148,163,184,0.15)', radius: [9, 9, 9, 9] }}>
+            <Bar
+              dataKey="value"
+              shape={<NeonBar />}
+              background={{ fill: 'rgba(148,163,184,0.15)', radius: [9, 9, 9, 9] }}
+              onClick={(data, index) => {
+                const name = data && data.payload && data.payload.name
+                  ? data.payload.name
+                  : (Array.isArray(sorted) && sorted[index] ? sorted[index].name : undefined);
+                if (name) onBarClick(name);
+              }}
+            >
               {sorted.map((entry, idx) => (
-                <Cell key={`cell-${idx}`} fill={neon(entry.rate)} />
+                <Cell
+                  key={`cell-${idx}`}
+                  fill={neon(entry.rate)}
+                  onClick={() => onBarClick(entry.name)}
+                  cursor="pointer"
+                />
               ))}
               <LabelList dataKey="value" position="right" offset={isMobile ? 4 : 8} formatter={(v) => `${v}%`} fill="#334155" fontSize={isMobile ? 10 : 11} />
             </Bar>
@@ -114,6 +141,20 @@ const AdminOverview = () => {
   const programId = selectedProgramId || urlProgramId;
   const urlProgramCode = urlParams.get('programCode');
   const programCode = programInfo?.code || urlProgramCode || null;
+
+  const getEffectiveProgramId = () => {
+    if (user?.userType === 'SUPER_ADMIN' && programId) return programId;
+    if (user?.userType === 'ADMIN' && user?.programId) return user.programId;
+    return null;
+  };
+
+  const handleCategoryBarClick = (categoryName) => {
+    const base = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
+    const effectiveProgramId = getEffectiveProgramId();
+    const qp = effectiveProgramId ? `?programId=${encodeURIComponent(effectiveProgramId)}` : '';
+    navigate(`${base}/categories-summary/${encodeURIComponent(categoryName)}/completion${qp}`);
+  };
+
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
@@ -274,7 +315,7 @@ const AdminOverview = () => {
           )}
           {showCat && (
             <div className="mt-3 sm:mt-4">
-              <CategoryPerformanceChart data={catSummaries} />
+              <CategoryPerformanceChart data={catSummaries} onBarClick={handleCategoryBarClick} />
             </div>
           )}
         </div>
@@ -377,6 +418,7 @@ const AdminOverview = () => {
           </div>
         </div>
       </div>
+      
     </div>
   );
 };

@@ -123,6 +123,17 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
         String getStudentName();
     }
 
+    // Students who did NOT meet a given category (optionally scoped by program)
+    @Query(value = "SELECT scp.university_id AS universityId, scp.student_name AS studentName\n" +
+            "FROM student_category_progress scp\n" +
+            "WHERE scp.category_name = :categoryName\n" +
+            "  AND (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  AND ( (COALESCE(scp.min_required_courses,0) > 0 AND COALESCE(scp.completed_courses,0) < scp.min_required_courses)\n" +
+            "        OR (COALESCE(scp.min_required_credits,0) > 0 AND COALESCE(scp.completed_credits,0) < scp.min_required_credits) )\n" +
+            "GROUP BY scp.university_id, scp.student_name",
+            nativeQuery = true)
+    List<MetProjection> findStudentsWhoNotMetCategory(@Param("programId") Long programId, @Param("categoryName") String categoryName);
+
     // Count students whose number of unmet categories equals a specific value (e.g., 1 for "close to completion")
     @Query(value = "SELECT COUNT(*) FROM (\n" +
             "  SELECT scp.university_id,\n" +

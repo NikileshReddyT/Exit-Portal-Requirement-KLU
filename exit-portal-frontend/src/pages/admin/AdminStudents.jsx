@@ -47,6 +47,52 @@ const AdminStudents = () => {
     });
   }, [query, setSearchParams]);
 
+  // If page opened with ?studentId=..., preselect that student (and optionally hydrate name via search API)
+  useEffect(() => {
+    const paramStudentId = searchParams.get('studentId');
+    if (!paramStudentId) return;
+    // If already selected same student, skip
+    if (selected && String(selected.id) === String(paramStudentId)) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        // Try to find the exact student via search endpoint
+        const base = `${config.backendUrl}/api/v1/admin/data/students/search`;
+        const params = new URLSearchParams();
+        params.append('q', String(paramStudentId));
+        params.append('limit', '5');
+        if (user?.userType === 'SUPER_ADMIN' && programId) {
+          params.append('programId', String(programId));
+        } else if (user?.userType === 'ADMIN' && user?.programId) {
+          params.append('programId', String(user.programId));
+        }
+        const url = `${base}?${params.toString()}`;
+        const res = await axios.get(url, { withCredentials: true });
+        const list = Array.isArray(res.data) ? res.data : [];
+        const exact = list.find(s => String(s.studentId) === String(paramStudentId)) || list[0];
+        if (!cancelled) {
+          if (exact) {
+            setSelected({ id: String(exact.studentId), name: exact.studentName || '' });
+          } else {
+            // Fallback to ID only
+            setSelected({ id: String(paramStudentId), name: '' });
+          }
+          // Prefill search box with the studentId for context
+          setQuery(String(paramStudentId));
+          setShowSuggestions(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSelected({ id: String(paramStudentId), name: '' });
+          setQuery(String(paramStudentId));
+          setShowSuggestions(false);
+        }
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [searchParams, user, programId, selected]);
+
   // Debounced search for suggestions
   useEffect(() => {
     let cancelled = false;

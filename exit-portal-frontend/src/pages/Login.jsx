@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence, scale } from 'framer-motion';
-import { FiUser, FiLock, FiLogIn, FiLoader, FiAlertTriangle, FiArrowRight } from 'react-icons/fi';
+import { FiUser, FiLock, FiLogIn, FiLoader, FiAlertTriangle, FiArrowRight, FiEye, FiEyeOff } from 'react-icons/fi';
 import config from '../config';
 import bg from '../images/home.png'
 
@@ -13,6 +13,7 @@ const Login = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
     const { login } = useAuth();
 
@@ -52,6 +53,10 @@ const Login = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const togglePasswordVisibility = () => {
+        setShowPassword(!showPassword);
     };
 
     const containerVariants = {
@@ -148,13 +153,20 @@ const Login = () => {
                                     <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                                     <input
                                         id="password"
-                                        type="password"
+                                        type={showPassword ? "text" : "password"}
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full pl-12 pr-4 py-3 bg-white/50 border-2 border-white/40 rounded-xl focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red transition-all duration-300 outline-none placeholder-gray-500 text-brand-charcoal shadow-inner"
+                                        className="w-full pl-12 pr-12 py-3 bg-white/50 border-2 border-white/40 rounded-xl focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red transition-all duration-300 outline-none placeholder-gray-500 text-brand-charcoal shadow-inner"
                                         placeholder="Enter your password"
                                         required
                                     />
+                                    <button 
+                                        type="button" 
+                                        onClick={togglePasswordVisibility}
+                                        className="btn absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                    >
+                                        {showPassword ? <FiEyeOff /> : <FiEye />}
+                                    </button>
                                 </div>
                                 <div className="text-right mt-2">
                                     <Link to="/forgot-password" className="text-sm text-brand-red hover:underline font-semibold">

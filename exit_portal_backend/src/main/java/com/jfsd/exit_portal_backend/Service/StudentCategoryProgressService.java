@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -96,6 +97,22 @@ public class StudentCategoryProgressService {
         List<StudentCategoryProgress> rows = progressRepository.findByProgramCode(programCode);
         enrichWithMinimumsForProgram(rows, programCode);
         return rows;
+    }
+
+    // ===== Category completion lists (completed vs incomplete) =====
+    public List<StudentCategoryProgressRepository.MetProjection> getStudentsWhoMetCategory(Long programId, String categoryName) {
+        return progressRepository.findStudentsWhoMetCategory(programId, categoryName);
+    }
+
+    public List<StudentCategoryProgressRepository.MetProjection> getStudentsWhoNotMetCategory(Long programId, String categoryName) {
+        return progressRepository.findStudentsWhoNotMetCategory(programId, categoryName);
+    }
+
+    public Map<String, List<StudentCategoryProgressRepository.MetProjection>> getCategoryCompletionLists(Long programId, String categoryName) {
+        Map<String, List<StudentCategoryProgressRepository.MetProjection>> result = new HashMap<>();
+        result.put("completed", getStudentsWhoMetCategory(programId, categoryName));
+        result.put("incomplete", getStudentsWhoNotMetCategory(programId, categoryName));
+        return result;
     }
 
     // Helper: group rows by program code and enrich from ProgramCategoryRequirement

@@ -3,15 +3,17 @@ package com.jfsd.exit_portal_backend.Controller;
 
 import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
 import com.jfsd.exit_portal_backend.Service.StudentCategoryProgressService;
+import com.jfsd.exit_portal_backend.Repository.StudentCategoryProgressRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/progress")
-@CrossOrigin(origins = "http://localhost:5500")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"}, allowCredentials = "true")
 public class StudentCategoryProgressController {
 
     @Autowired
@@ -50,5 +52,15 @@ public class StudentCategoryProgressController {
             return ResponseEntity.ok(progressService.getAllProgressForProgram(programCode));
         }
         return ResponseEntity.ok(progressService.getAllProgress());
+    }
+
+    // Completed vs Incomplete students for a category (optional program scope via programId)
+    @GetMapping("/category/completion")
+    public ResponseEntity<Map<String, List<StudentCategoryProgressRepository.MetProjection>>> getCategoryCompletion(
+            @RequestParam("categoryName") String categoryName,
+            @RequestParam(value = "programId", required = false) Long programId
+    ) {
+        Map<String, List<StudentCategoryProgressRepository.MetProjection>> result = progressService.getCategoryCompletionLists(programId, categoryName);
+        return ResponseEntity.ok(result);
     }
 }

@@ -12,6 +12,7 @@ import AdminCategoryDetails from './pages/admin/AdminCategoryDetails';
 import AdminCategoriesSummary from './pages/admin/AdminCategoriesSummary';
 import AdminCategoryStudents from './pages/admin/AdminCategoryStudents';
 import AdminStudentCategoryCourses from './pages/admin/AdminStudentCategoryCourses';
+import AdminCategoryCompletion from './pages/admin/AdminCategoryCompletion';
 import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseDetails from './pages/admin/AdminCourseDetails';
 import AdminGrades from './pages/admin/AdminGrades';
@@ -61,6 +62,7 @@ function App() {
           <Route path='categories/:categoryName' element={<AdminCategoryDetails />} />
           <Route path='categories-summary' element={<AdminCategoriesSummary />} />
           <Route path='categories-summary/:categoryName' element={<AdminCategoryStudents />} />
+          <Route path='categories-summary/:categoryName/completion' element={<AdminCategoryCompletion />} />
           <Route path='categories-summary/:categoryName/students/:studentId' element={<AdminStudentCategoryCourses />} />
           <Route path='courses' element={<AdminCourses />} />
           <Route path='courses/:courseCode' element={<AdminCourseDetails />} />
@@ -87,6 +89,7 @@ function App() {
           <Route path='categories/:categoryName' element={<AdminCategoryDetails />} />
           <Route path='categories-summary' element={<AdminCategoriesSummary />} />
           <Route path='categories-summary/:categoryName' element={<AdminCategoryStudents />} />
+          <Route path='categories-summary/:categoryName/completion' element={<AdminCategoryCompletion />} />
           <Route path='categories-summary/:categoryName/students/:studentId' element={<AdminStudentCategoryCourses />} />
           <Route path='courses' element={<AdminCourses />} />
           <Route path='courses/:courseCode' element={<AdminCourseDetails />} />
