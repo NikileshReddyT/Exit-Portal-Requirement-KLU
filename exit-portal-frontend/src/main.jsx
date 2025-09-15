@@ -3,11 +3,14 @@ import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import { HelmetProvider } from 'react-helmet-async';
 
 createRoot(document.getElementById("root")).render(
-  <AuthProvider>
-    <DataProvider>
-      <App />
-    </DataProvider>
-  </AuthProvider>
+  <HelmetProvider>
+    <AuthProvider>
+      <DataProvider>
+        <App />
+      </DataProvider>
+    </AuthProvider>
+  </HelmetProvider>
 );

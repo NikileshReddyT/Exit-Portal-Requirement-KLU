@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX, FiUploadCloud, FiDatabase } from 'react-icons/fi';
+import SEO from '../SEO';
 
 const Breadcrumbs = ({ location, user }) => {
   const pathSegments = location.pathname.split('/').filter(Boolean);
@@ -179,6 +180,11 @@ const AdminLayout = () => {
 
   return (
     <div className="h-screen bg-white">
+      <SEO
+        title="Admin Console - KL University Exit Portal"
+        description="Administrative console for KL University Exit Portal. Manage data and view insights."
+        robots="noindex, nofollow"
+      />
       {/* Mobile Header */}
       <header className="lg:hidden navbar-maroon shadow-sm border-b sticky top-0 z-50">
         <div className="px-4 py-3">

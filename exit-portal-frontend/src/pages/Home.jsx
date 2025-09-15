@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiArrowRight, FiBarChart2, FiCheckSquare, FiDownload, FiBookOpen, FiLogIn, FiUserCheck, FiThumbsUp, FiZap, FiSmartphone, FiShield, FiChevronDown } from 'react-icons/fi';
 import bg from '../images/bg.jpg';
+import SEO from '../components/SEO';
 
 const FeatureCard = ({ icon, title, children, delay }) => (
     <motion.div
@@ -55,6 +56,12 @@ const Home = () => {
     }, []);
     return (
         <div className="font-sans bg-gray-50 text-gray-800">
+            <SEO
+                title="KL University Exit Portal"
+                description="KL University Exit Portal: Track student progress, manage categories and courses, upload results, and view analytics for exit requirements."
+                canonicalPath="/"
+                image="/vite.svg"
+            />
             <div 
                 className="fixed inset-0 z-10 h-screen w-screen"
                 style={{
