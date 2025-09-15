@@ -354,11 +354,12 @@ public class NaturalLanguageQueryService {
             8. Handle fuzzy matching: use LOWER() and LIKE for text searches
             9. For partial matches, use wildcards appropriately
             10. Optimize performance with proper WHERE clause ordering
+            11. Use proper names for the columns and tables as given in the schema if it is small make it small make sure nothing is changed about names available
             
             CRITICAL INSTRUCTIONS:
             - Analyze the context data to understand actual database values
             - Use EXISTS/NOT EXISTS for existence checks when appropriate  
-            - Don't return duplicate rows (use DISTINCT or proper GROUP BY)
+            - Don't return duplicate rows until requested (use DISTINCT or proper GROUP BY)
             - Use proper table aliases for readability
             - Handle NULL values appropriately
             - Return ONLY the SQL query, no explanations
@@ -430,7 +431,7 @@ public class NaturalLanguageQueryService {
             - Vague qualifiers like "best", "top", "recent" without specific criteria
             - Multiple possible interpretations of the same phrase
             
-            If clarification needed, write a brief, direct question.
+            If clarification needed, write a brief, direct question and simple to understand.
             """, SCHEMA_CONTEXT, naturalLanguageQuery);
 
         try {
@@ -477,7 +478,7 @@ public class NaturalLanguageQueryService {
             - General queries like "show students" (assume basic student info)
             - Queries that can be answered with reasonable defaults
             
-            If clarification is truly needed, write a brief, direct question.
+            If clarification is truly needed, write a brief, direct question which is easier to understand.
             
             Examples of when NOT to ask:
             - "show students" → CLEAR (show all students with basic info)
