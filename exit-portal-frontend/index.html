@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./src/images/Frame 2.svg" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KL University Exit Portal</title>
     <meta name="description" content="KL University Exit Portal for administrators and students. Upload results, manage categories and courses, and view analytics and progress toward exit requirements." />
@@ -12,8 +12,8 @@
     <meta name="application-name" content="KL University Exit Portal" />
     <meta name="apple-mobile-web-app-title" content="KL Exit Portal" />
     <meta name="theme-color" content="#7f1d1d" />
-    <!-- Optional: Replace with your production domain -->
-    <link rel="canonical" href="/" />
+    <!-- Replace with your custom domain once configured -->
+    <link rel="canonical" href="https://exitportal-klu.vercel.app/" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/vite.svg" />
 
@@ -23,6 +23,7 @@
     <meta property="og:description" content="Upload and manage academic data, and track progress toward exit requirements with modern analytics." />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="en_IN" />
+    <meta property="og:url" content="https://exitportal-klu.vercel.app/" />
     <!-- If you have a dedicated OG image in public/, update this path -->
     <meta property="og:image" content="/vite.svg" />
 
@@ -38,12 +39,23 @@
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "KL University Exit Portal",
-        "url": "/",
+        "url": "https://exitportal-klu.vercel.app/",
+        "alternateName": ["KLU Exit Portal", "KL University Exit Requirement Portal"],
         "potentialAction": {
           "@type": "SearchAction",
-          "target": "/?q={search_term_string}",
+          "target": "https://exitportal-klu.vercel.app/?q={search_term_string}",
           "query-input": "required name=search_term_string"
         }
+      }
+    </script>
+    <!-- Structured Data: Organization -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "KL University",
+        "url": "https://exitportal-klu.vercel.app/",
+        "logo": "https://exitportal-klu.vercel.app/vite.svg"
       }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
