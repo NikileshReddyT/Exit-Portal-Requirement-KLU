@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX, FiUploadCloud } from 'react-icons/fi';
+import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX, FiUploadCloud, FiDatabase } from 'react-icons/fi';
 
 const Breadcrumbs = ({ location, user }) => {
   const pathSegments = location.pathname.split('/').filter(Boolean);
@@ -27,7 +27,8 @@ const Breadcrumbs = ({ location, user }) => {
       'grades': 'Grades',
       'progress': 'Progress',
       'users': 'Users',
-      'upload': 'Data Upload'
+      'upload': 'Data Upload',
+      'analytics': 'Analytics'
     };
     
     for (let i = 1; i < pathSegments.length; i++) {
@@ -163,6 +164,7 @@ const AdminLayout = () => {
       items: [
         { to: `${basePath}/insights`, label: 'Insights Overview', icon: <FiBarChart2 /> },
         { to: `${basePath}/categories-summary`, label: 'Categories Summary', icon: <FiCompass /> },
+        { to: `${basePath}/analytics`, label: 'Analytics', icon: <FiDatabase /> },
       ],
     },
   ];
