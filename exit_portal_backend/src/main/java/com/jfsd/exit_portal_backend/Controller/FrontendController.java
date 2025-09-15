@@ -52,6 +52,9 @@ public class FrontendController {
     
     @Value("${APP_ENV:dev}")
     private String appEnv;
+    
+    @Value("${COOKIE_DOMAIN:}")
+    private String cookieDomain;
 
     @GetMapping("/")
     public String index() {
@@ -88,6 +91,9 @@ public class FrontendController {
                 adminResponse.put("role", adminUser.getRole().name());
                 adminResponse.put("username", adminUser.getUsername());
                 adminResponse.put("name", adminUser.getName());
+                // Also return token so frontend can use Authorization header (helps Safari)
+                adminResponse.put("token", jwt);
+                adminResponse.put("tokenType", "Bearer");
                 if (adminUser.getProgram() != null) {
                     adminResponse.put("programId", adminUser.getProgram().getProgramId());
                     adminResponse.put("programCode", adminUser.getProgram().getCode());
@@ -115,6 +121,9 @@ public class FrontendController {
                 studentResponse.put("role", "STUDENT");
                 studentResponse.put("universityId", student.getUniversityId());
                 studentResponse.put("studentName", student.getStudentName());
+                // Also return token so frontend can use Authorization header (helps Safari)
+                studentResponse.put("token", jwt);
+                studentResponse.put("tokenType", "Bearer");
                 
                 return ResponseEntity.ok(studentResponse);
             }
@@ -176,14 +185,22 @@ public class FrontendController {
         boolean isProd = "prod".equalsIgnoreCase(appEnv) || "production".equalsIgnoreCase(appEnv);
         String sameSite = isProd ? "None" : "Lax";
 
-        ResponseCookie cookie = ResponseCookie.from("jwt", value)
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from("jwt", value)
                 .httpOnly(true)
-                .secure(isProd)
                 .path("/")
                 .sameSite(sameSite)
-                .maxAge(Duration.ofSeconds(maxAgeSeconds))
-                .build();
+                .maxAge(Duration.ofSeconds(maxAgeSeconds));
 
+        // Safari requires Secure when SameSite=None and HTTPS in production
+        if (isProd) {
+            builder = builder.secure(true);
+            if (cookieDomain != null && !cookieDomain.isBlank()) {
+                // e.g., COOKIE_DOMAIN=your-backend-domain.com (no scheme)
+                builder = builder.domain(cookieDomain.trim());
+            }
+        }
+
+        ResponseCookie cookie = builder.build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 }

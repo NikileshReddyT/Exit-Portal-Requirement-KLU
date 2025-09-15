@@ -28,7 +28,7 @@ public class AdminInsightsController {
     public ResponseEntity<?> getDashboard(
             @RequestParam(value = "programId", required = false) Long requestProgramId,
             HttpServletRequest request) {
-        String jwt = getJwtFromCookie(request);
+        String jwt = getJwtFromRequest(request);
         if (jwt == null) {
             return ResponseEntity.status(401).body("No JWT token found");
         }
@@ -56,7 +56,7 @@ public class AdminInsightsController {
     @GetMapping("/me")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<?> getCurrentUser(HttpServletRequest request) {
-        String jwt = getJwtFromCookie(request);
+        String jwt = getJwtFromRequest(request);
         if (jwt == null) {
             return ResponseEntity.status(401).body("No JWT token found");
         }
@@ -107,7 +107,7 @@ public class AdminInsightsController {
     public ResponseEntity<Map<String, Object>> getStats(
             @RequestParam(value = "programId", required = false) Long requestProgramId,
             HttpServletRequest request) {
-        String jwt = getJwtFromCookie(request);
+        String jwt = getJwtFromRequest(request);
         if (jwt == null) {
             return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
         }
@@ -132,7 +132,7 @@ public class AdminInsightsController {
     public ResponseEntity<Map<String, Object>> getRisk(
             @RequestParam(value = "programId", required = false) Long requestProgramId,
             HttpServletRequest request) {
-        String jwt = getJwtFromCookie(request);
+        String jwt = getJwtFromRequest(request);
         if (jwt == null) {
             return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
         }
@@ -148,7 +148,7 @@ public class AdminInsightsController {
             @RequestParam(value = "programId", required = false) Long requestProgramId,
             @RequestParam(value = "limit", defaultValue = "5") int limit,
             HttpServletRequest request) {
-        String jwt = getJwtFromCookie(request);
+        String jwt = getJwtFromRequest(request);
         if (jwt == null) {
             return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
         }
@@ -290,5 +290,20 @@ public class AdminInsightsController {
             }
         }
         return null;
+    }
+
+    private String getJwtFromAuthorizationHeader(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || authHeader.isBlank()) return null;
+        if (authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            return authHeader.substring(7).trim();
+        }
+        return null;
+    }
+
+    private String getJwtFromRequest(HttpServletRequest request) {
+        String jwt = getJwtFromCookie(request);
+        if (jwt != null && !jwt.isBlank()) return jwt;
+        return getJwtFromAuthorizationHeader(request);
     }
 }

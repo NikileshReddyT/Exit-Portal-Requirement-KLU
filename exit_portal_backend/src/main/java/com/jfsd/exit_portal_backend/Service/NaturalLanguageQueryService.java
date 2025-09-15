@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 @Service
+@SuppressWarnings("unused")
 public class NaturalLanguageQueryService {
 
     @Autowired

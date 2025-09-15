@@ -26,7 +26,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         
+        // Try cookie first
         String jwt = parseJwtFromCookie(request);
+
+        // Fallback: try Authorization header (helps Safari and other browsers when cookies are blocked)
+        if (jwt == null) {
+            jwt = parseJwtFromAuthorizationHeader(request);
+        }
         
         if (jwt != null && jwtUtil.validateJwtToken(jwt)) {
             String username = jwtUtil.getUsernameFromJwtToken(jwt);
@@ -55,6 +61,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return cookie.getValue();
                 }
             }
+        }
+        return null;
+    }
+
+    private String parseJwtFromAuthorizationHeader(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || authHeader.isBlank()) {
+            return null;
+        }
+        // Support standard "Bearer <token>" header
+        if (authHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            return authHeader.substring(7).trim();
         }
         return null;
     }
