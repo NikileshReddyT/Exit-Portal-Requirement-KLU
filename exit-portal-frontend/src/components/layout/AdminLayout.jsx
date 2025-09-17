@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX, FiUploadCloud, FiDatabase } from 'react-icons/fi';
+import { FiUsers, FiFolder, FiBookOpen, FiEdit3, FiTrendingUp, FiBarChart2, FiCompass, FiSettings, FiX, FiUploadCloud, FiDatabase, FiAlertTriangle } from 'react-icons/fi';
 import SEO from '../SEO';
 
 const Breadcrumbs = ({ location, user }) => {
@@ -177,6 +177,14 @@ const AdminLayout = () => {
       ],
     });
   }
+
+  // Always append Danger Zone as the final group
+  navGroups.push({
+    title: 'Maintenance',
+    items: [
+      { to: `${basePath}/danger`, label: 'Danger Zone', icon: <FiAlertTriangle /> },
+    ],
+  });
 
   return (
     <div className="h-screen bg-white">

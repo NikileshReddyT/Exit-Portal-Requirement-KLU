@@ -17,7 +17,7 @@ public class Categories {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "categoryID")
+    @Column(name = "category_id")
     private int categoryID;
 
     @ManyToOne

@@ -22,8 +22,6 @@ const PdfDownloadButton = ({ studentId, wrapperClassName = "flex justify-center 
         `${config.backendUrl}/api/v1/frontend/generatereport`,
         { universityId: studentId }
       );
-      data.categoryProgress = data.categoryProgress.reverse();
-      data.categories = data.categories.reverse();
       setReportData(data || null);
     } catch (err) {
       console.error("Failed to fetch report data:", err);

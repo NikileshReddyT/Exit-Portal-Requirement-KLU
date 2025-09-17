@@ -21,6 +21,7 @@ import AdminProgress from './pages/admin/AdminProgress';
 import AdminStudentReport from './pages/admin/AdminStudentReport';
 import AdminInsights from './pages/admin/AdminInsights';
 import AdminDataUpload from './pages/admin/AdminDataUpload';
+import AdminDangerZone from './pages/admin/AdminDangerZone';
 import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
 import CategoriesUpload from './pages/admin/upload/CategoriesUpload';
 import CoursesUpload from './pages/admin/upload/CoursesUpload';
@@ -72,6 +73,7 @@ function App() {
           <Route path='progress' element={<AdminProgress />} />
           <Route path='report' element={<AdminStudentReport />} />
           <Route path='upload' element={<AdminDataUpload />} />
+          <Route path='danger' element={<AdminDangerZone />} />
           {/* <Route path='upload/categories' element={<CategoriesUpload />} /> */}
           {/* <Route path='upload/courses' element={<CoursesUpload />} /> */}
           <Route path='upload/combined' element={<CombinedUpload />} />
@@ -101,6 +103,7 @@ function App() {
           <Route path='report' element={<AdminStudentReport />} />
           <Route path='users' element={<AdminUsers />} />
           <Route path='upload' element={<AdminDataUpload />} />
+          <Route path='danger' element={<AdminDangerZone />} />
           {/* <Route path='upload/categories' element={<CategoriesUpload />} /> */}
           {/* <Route path='upload/courses' element={<CoursesUpload />} /> */}
           <Route path='upload/combined' element={<CombinedUpload />} />

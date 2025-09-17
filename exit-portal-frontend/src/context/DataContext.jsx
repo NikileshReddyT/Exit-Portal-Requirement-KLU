@@ -24,7 +24,6 @@ export const DataProvider = ({ children }) => {
         setLoadingProgress('pending');
         try {
             const response = await axios.post(`${config.backendUrl}/api/v1/frontend/getdata`, { universityid: user.universityId });
-            response.data.reverse();
             
             setStudentProgressData(response.data);
             setLoadingProgress('succeeded');

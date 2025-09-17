@@ -56,6 +56,16 @@ public class NaturalLanguageQueryService {
         - program_id (BIGINT, PRIMARY KEY)
         - code (VARCHAR(20), UNIQUE)
         - name (VARCHAR(100))
+
+        sample-data : 
+        program_id,code,name
+        1,BT-CS,"B Tech - CSE"
+        2,BT-AIDS,"B Tech - AIDS"
+        3,BT-EEE,"B Tech - EEE"
+        4,BT-ECE,"B Tech - ECE"
+        5,BT-MECH,"B Tech - MECH"
+        6,BT-CIVIL,"B Tech - CIVIL"
+
         
         TABLE students:
         - student_id (VARCHAR(64), PRIMARY KEY)
@@ -64,20 +74,34 @@ public class NaturalLanguageQueryService {
         - program_id (BIGINT, FOREIGN KEY -> programs.program_id)
         
         TABLE categories:
-        - categoryID (INT, PRIMARY KEY)
+        - category_id (INT, PRIMARY KEY)
         - category_name (VARCHAR)
         - program_id (BIGINT, FOREIGN KEY -> programs.program_id)
+
+        sample-data : 
+        category_id,category_name,program_id
+        62,"Audit Courses (AUC)",2
+        47,"Basic Sciences (BSC)",2
+        48,"Engineering Sciences (ESC)",2
+
         
         TABLE courses:
-        - courseID (INT, PRIMARY KEY)
+        - course_id (INT, PRIMARY KEY)
         - course_code (VARCHAR, UNIQUE)
         - course_title (VARCHAR)
         - course_credits (DOUBLE)
+
+        sample-data : 
+        course_id,course_code,course_credits,course_title
+        3001,22SDM3507M,3,"INTELLIGENT SOCIAL MEDIA MONITORING SYSTEMS"
+        3002,22IE4054R,6,"ENGINEERING CAPSTONE PROJECT - PHASE 2"
+        3003,22AD2001,3,"DATA DRIVEN ARTIFICIAL INTELLIGENT SYSTEMS"
+
         
         TABLE student_grades:
         - sno (BIGINT, PRIMARY KEY)
         - university_id (VARCHAR, FOREIGN KEY -> students.student_id)
-        - course_id (INT, FOREIGN KEY -> courses.courseID)
+        - course_id (INT, FOREIGN KEY -> courses.course_id)
         - grade (VARCHAR)
         - grade_point (DOUBLE)
         - promotion (VARCHAR - 'P' for pass, 'F' for fail)
@@ -85,18 +109,42 @@ public class NaturalLanguageQueryService {
         - academic_year (VARCHAR)
         - semester (VARCHAR)
         
+        sample-data : 
+        sno,category,grade,grade_point,promotion,semester,academic_year,course_id,university_id
+        129933,"Audit Courses (AUC)",NULL,NULL,R,ODD,2025-2026,3005,2200080001
+        130210,"Humanities, Arts & Social Sciences (HAS)",NULL,NULL,R,ODD,2025-2026,3021,2200080001
+        127770,"Value Added Courses (VAC)",NULL,NULL,R,ODD,2024-2025,3135,2200080001
+        113040,"Placement Training",P,4,P,EVEN,2023-2024,3072,2200080001
+        113034,"Basic Sciences (BSC)",A+,9,P,ODD,2023-2024,3015,2200080001
+        113018,"Engineering Sciences (ESC)",O,10,P,EVEN,2022-2023,3020,2200080001
+        113043,"Professional Core (PCC)",A+,9,P,ODD,2023-2024,3081,2200080001
+        
         TABLE program_course_category:
         - id (BIGINT, PRIMARY KEY)
         - program_id (BIGINT, FOREIGN KEY -> programs.program_id)
-        - course_id (INT, FOREIGN KEY -> courses.courseID)
-        - category_id (INT, FOREIGN KEY -> categories.categoryID)
+        - course_id (INT, FOREIGN KEY -> courses.course_id)
+        - category_id (INT, FOREIGN KEY -> categories.category_id)
+
+        sample-data : 
+        id,category_id,course_id,program_id
+        3001,57,3001,2
+        3002,58,3002,2
+        3003,49,3003,2
+
         
         TABLE program_category_requirement:
         - id (BIGINT, PRIMARY KEY)
         - program_id (BIGINT, FOREIGN KEY -> programs.program_id)
-        - category_id (INT, FOREIGN KEY -> categories.categoryID)
+        - category_id (INT, FOREIGN KEY -> categories.category_id)
         - min_courses (INT)
         - min_credits (DOUBLE)
+
+        sample-data : 
+        id,min_courses,min_credits,category_id,program_id
+        264,11,18,44,2
+        265,1,2,45,2
+        266,1,2,46,2
+
         
         RELATIONSHIPS:
         - Students belong to programs
@@ -104,6 +152,17 @@ public class NaturalLanguageQueryService {
         - Courses are mapped to categories per program via program_course_category
         - Each program-category has minimum requirements in program_category_requirement
         - Student grades link students to courses with academic performance data
+        
+        RELATIONSHIPS:
+        - Students belong to programs
+        - Categories are program-specific
+        - Courses are mapped to categories per program via program_course_category
+        - Each program-category has minimum requirements in program_category_requirement
+        - Student grades link students to courses with academic performance data
+        - Student category progress stores fulfillment status for category requirements per student
+        - Grades reference both students (via university_id) and courses (via course_id)
+        - Programs are referenced by categories, students, courses (indirectly), program_course_category, program_category_requirement, and student_category_progress
+        - Categories and programs are both referenced in student_category_progress for tracking progress per category in a particular program
         """;
 
     private static final Pattern FORBIDDEN_PATTERNS = Pattern.compile(
@@ -538,13 +597,13 @@ public class NaturalLanguageQueryService {
             // Fetch courses with comprehensive data
             if (needsCourses) {
                 List<Map<String, Object>> courses = jdbcTemplate.queryForList(
-                    "SELECT c.courseID, c.course_code, c.course_title, c.course_credits, " +
+                    "SELECT c.course_id, c.course_code, c.course_title, c.course_credits, " +
                     "COUNT(DISTINCT sg.university_id) as total_enrolled, " +
                     "COUNT(CASE WHEN sg.grade IS NOT NULL AND sg.grade != '' THEN 1 END) as graded_count, " +
                     "COUNT(CASE WHEN sg.promotion = 'R' THEN 1 END) as pending_results " +
                     "FROM courses c " +
-                    "LEFT JOIN student_grades sg ON c.courseID = sg.course_id " +
-                    "GROUP BY c.courseID, c.course_code, c.course_title, c.course_credits " +
+                    "LEFT JOIN student_grades sg ON c.course_id = sg.course_id " +
+                    "GROUP BY c.course_id, c.course_code, c.course_title, c.course_credits " +
                     "ORDER BY c.course_code LIMIT 50"
                 );
                 relevantData.put("courses", courses);
@@ -563,7 +622,7 @@ public class NaturalLanguageQueryService {
                 List<Map<String, Object>> sampleGrades = jdbcTemplate.queryForList(
                     "SELECT sg.university_id, c.course_code, c.course_title, sg.grade, sg.grade_point, sg.promotion, sg.academic_year " +
                     "FROM student_grades sg " +
-                    "JOIN courses c ON sg.course_id = c.courseID " +
+                    "JOIN courses c ON sg.course_id = c.course_id " +
                     "ORDER BY sg.academic_year DESC, c.course_code LIMIT 30"
                 );
                 relevantData.put("sampleGrades", sampleGrades);
@@ -572,7 +631,7 @@ public class NaturalLanguageQueryService {
             // Fetch categories if needed
             if (needsCategories) {
                 List<Map<String, Object>> categories = jdbcTemplate.queryForList(
-                    "SELECT cat.categoryID, cat.category_name, cat.program_id, p.name as program_name " +
+                    "SELECT cat.category_id, cat.category_name, cat.program_id, p.name as program_name " +
                     "FROM categories cat " +
                     "JOIN programs p ON cat.program_id = p.program_id " +
                     "ORDER BY cat.program_id, cat.category_name"
@@ -852,7 +911,7 @@ public class NaturalLanguageQueryService {
             // Gather course codes and titles for fuzzy matching
             if (queryLower.contains("course") || queryLower.contains("subject") || queryLower.contains("class")) {
                 List<Map<String, Object>> courses = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT courseID, course_code, course_title FROM courses"
+                    "SELECT DISTINCT course_id, course_code, course_title FROM courses"
                 );
                 context.put("courses", courses);
             }
@@ -861,7 +920,7 @@ public class NaturalLanguageQueryService {
             if (queryLower.contains("category") || queryLower.contains("type") || queryLower.contains("elective") || 
                 queryLower.contains("core") || queryLower.contains("mandatory")) {
                 List<Map<String, Object>> categories = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT categoryID, category_name, program_id FROM categories"
+                    "SELECT DISTINCT category_id, category_name, program_id FROM categories"
                 );
                 context.put("categories", categories);
             }
@@ -877,7 +936,7 @@ public class NaturalLanguageQueryService {
                 // Get sample student_grades data to understand the structure
                 List<Map<String, Object>> sampleGrades = jdbcTemplate.queryForList(
                     "SELECT sg.university_id, sg.course_id, sg.grade, sg.grade_point, sg.promotion, sg.academic_year, sg.semester, c.course_code, c.course_title " +
-                    "FROM student_grades sg JOIN courses c ON sg.course_id = c.courseID " +
+                    "FROM student_grades sg JOIN courses c ON sg.course_id = c.course_id " +
                     "LIMIT 5"
                 );
                 context.put("sampleGrades", sampleGrades);
@@ -888,13 +947,13 @@ public class NaturalLanguageQueryService {
                 queryLower.contains("not given") || queryLower.contains("pending") || queryLower.contains("missing")) {
                 // Get courses with and without grades
                 List<Map<String, Object>> courseGradeStatus = jdbcTemplate.queryForList(
-                    "SELECT c.courseID, c.course_code, c.course_title, " +
+                    "SELECT c.course_id, c.course_code, c.course_title, " +
                     "COUNT(sg.sno) as enrolled_students, " +
                     "COUNT(CASE WHEN sg.grade IS NOT NULL AND sg.grade != '' THEN 1 END) as graded_students, " +
                     "COUNT(CASE WHEN sg.promotion = 'R' THEN 1 END) as pending_results " +
                     "FROM courses c " +
-                    "LEFT JOIN student_grades sg ON c.courseID = sg.course_id " +
-                    "GROUP BY c.courseID, c.course_code, c.course_title " +
+                    "LEFT JOIN student_grades sg ON c.course_id = sg.course_id " +
+                    "GROUP BY c.course_id, c.course_code, c.course_title " +
                     "LIMIT 10"
                 );
                 context.put("courseGradeStatus", courseGradeStatus);

@@ -69,7 +69,7 @@ public class StudentCategoryProgressService {
     
     
     public List<StudentCategoryProgress> getStudentProgress(String universityId) {
-        List<StudentCategoryProgress> rows = progressRepository.findByUniversityId(universityId);
+        List<StudentCategoryProgress> rows = progressRepository.findByUniversityIdOrderByCategoryId(universityId);
         enrichWithMinimumsGroupedByProgram(rows);
         return rows;
     }

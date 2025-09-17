@@ -412,12 +412,12 @@ public class StudentGradeBatchImportService {
         }
         try {
             String sql = "UPDATE student_grades sg " +
-                    "JOIN students s ON s.student_id = sg.university_id " +
-                    "JOIN programs p ON p.program_id = s.program_id " +
-                    "JOIN program_course_category pcc ON pcc.course_id = sg.course_id AND pcc.program_id = p.program_id " +
-                    "JOIN categories c ON c.categoryID = pcc.category_id " +
-                    "SET sg.category = c.category_name " +
-                    "WHERE (sg.category IS NULL OR sg.category = '') AND p.code = ?";
+                "JOIN students s ON s.student_id = sg.university_id " +
+                "JOIN programs p ON p.program_id = s.program_id " +
+                "JOIN program_course_category pcc ON pcc.course_id = sg.course_id AND pcc.program_id = p.program_id " +
+                "JOIN categories c ON c.category_id = pcc.category_id " +
+                "SET sg.category = c.category_name " +
+                "WHERE (sg.category IS NULL OR sg.category = '') AND p.code = ?";
             int updated = jdbcTemplate.update(sql, programCode.trim());
             messages.add("Backfill updated rows: " + updated);
         } catch (Exception ex) {
@@ -632,29 +632,29 @@ public class StudentGradeBatchImportService {
                 // 3) Merge into student_grades in one native upsert
                 ensureUniqueIndexForUpsert();
                 final String mergeSql = "INSERT INTO student_grades (university_id, course_id, grade, grade_point, promotion, category, academic_year, semester) " +
-                        "SELECT r.university_id, c.courseid, NULL, NULL, 'R', COALESCE(cat.category_name, ''), r.academic_year, r.semester " +
+                        "SELECT r.university_id, c.course_id, NULL, NULL, 'R', COALESCE(cat.category_name, ''), r.academic_year, r.semester " +
                         "FROM tmp_registrations r " +
                         "JOIN courses c ON c.course_code = r.course_code " +
                         "LEFT JOIN students s ON s.student_id = r.university_id " +
-                        "LEFT JOIN program_course_category pcc ON pcc.course_id = c.courseid AND pcc.program_id = s.program_id " +
-                        "LEFT JOIN categories cat ON cat.categoryID = pcc.category_id " +
+                        "LEFT JOIN program_course_category pcc ON pcc.course_id = c.course_id AND pcc.program_id = s.program_id " +
+                        "LEFT JOIN categories cat ON cat.category_id = pcc.category_id " +
                         "ON DUPLICATE KEY UPDATE academic_year=VALUES(academic_year), semester=VALUES(semester), category=VALUES(category)";
                 // Diagnostics: count rows that will end up with empty category (no mapping found)
                 try {
                     String countUnmappedSql = "SELECT COUNT(*) FROM tmp_registrations r " +
                             "JOIN courses c ON c.course_code = r.course_code " +
                             "LEFT JOIN students s ON s.student_id = r.university_id " +
-                            "LEFT JOIN program_course_category pcc ON pcc.course_id = c.courseid AND pcc.program_id = s.program_id " +
-                            "LEFT JOIN categories cat ON cat.categoryID = pcc.category_id " +
-                            "WHERE cat.categoryID IS NULL";
+                            "LEFT JOIN program_course_category pcc ON pcc.course_id = c.course_id AND pcc.program_id = s.program_id " +
+                            "LEFT JOIN categories cat ON cat.category_id = pcc.category_id " +
+                            "WHERE cat.category_id IS NULL";
                     Integer unmappedCount = jdbcTemplate.queryForObject(countUnmappedSql, Integer.class);
                     if (unmappedCount != null && unmappedCount > 0) {
                         String sampleSql = "SELECT DISTINCT r.course_code FROM tmp_registrations r " +
                                 "JOIN courses c ON c.course_code = r.course_code " +
                                 "LEFT JOIN students s ON s.student_id = r.university_id " +
-                                "LEFT JOIN program_course_category pcc ON pcc.course_id = c.courseid AND pcc.program_id = s.program_id " +
-                                "LEFT JOIN categories cat ON cat.categoryID = pcc.category_id " +
-                                "WHERE cat.categoryID IS NULL " +
+                                "LEFT JOIN program_course_category pcc ON pcc.course_id = c.course_id AND pcc.program_id = s.program_id " +
+                                "LEFT JOIN categories cat ON cat.category_id = pcc.category_id " +
+                                "WHERE cat.category_id IS NULL " +
                                 "LIMIT 10";
                         List<String> sampleCodes = jdbcTemplate.query(sampleSql, (rs, i) -> rs.getString(1));
                         log.warn("Registrations: {} rows have no mapped category; sample course codes: {}", unmappedCount, sampleCodes);

@@ -76,7 +76,7 @@ public class AnalyticsController {
         
         tables.put("categories", Map.of(
             "columns", Map.of(
-                "categoryID", "INT PRIMARY KEY",
+                "category_id", "INT PRIMARY KEY",
                 "category_name", "VARCHAR",
                 "program_id", "BIGINT FK->programs.program_id"
             ),
@@ -85,7 +85,7 @@ public class AnalyticsController {
         
         tables.put("courses", Map.of(
             "columns", Map.of(
-                "courseID", "INT PRIMARY KEY",
+                "course_id", "INT PRIMARY KEY",
                 "course_code", "VARCHAR UNIQUE",
                 "course_title", "VARCHAR", 
                 "course_credits", "DOUBLE"
@@ -97,7 +97,7 @@ public class AnalyticsController {
             "columns", Map.of(
                 "sno", "BIGINT PRIMARY KEY",
                 "university_id", "VARCHAR FK->students.student_id",
-                "course_id", "INT FK->courses.courseID",
+                "course_id", "INT FK->courses.course_id",
                 "grade", "VARCHAR",
                 "grade_point", "DOUBLE",
                 "promotion", "VARCHAR (P/F)",
@@ -112,8 +112,8 @@ public class AnalyticsController {
             "columns", Map.of(
                 "id", "BIGINT PRIMARY KEY",
                 "program_id", "BIGINT FK->programs.program_id",
-                "course_id", "INT FK->courses.courseID", 
-                "category_id", "INT FK->categories.categoryID"
+                "course_id", "INT FK->courses.course_id", 
+                "category_id", "INT FK->categories.category_id"
             ),
             "description", "Maps courses to categories per program"
         ));
@@ -122,7 +122,7 @@ public class AnalyticsController {
             "columns", Map.of(
                 "id", "BIGINT PRIMARY KEY",
                 "program_id", "BIGINT FK->programs.program_id",
-                "category_id", "INT FK->categories.categoryID",
+                "category_id", "INT FK->categories.category_id",
                 "min_courses", "INT",
                 "min_credits", "DOUBLE"
             ),
@@ -134,7 +134,7 @@ public class AnalyticsController {
             "students_programs", "students.program_id -> programs.program_id",
             "categories_programs", "categories.program_id -> programs.program_id", 
             "grades_students", "student_grades.university_id -> students.student_id",
-            "grades_courses", "student_grades.course_id -> courses.courseID",
+            "grades_courses", "student_grades.course_id -> courses.course_id",
             "mappings", "program_course_category links programs, courses, categories",
             "requirements", "program_category_requirement defines minimums per program-category"
         ));

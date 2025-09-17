@@ -9,6 +9,7 @@ public class Courses {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "course_id")
     private int courseID;
 
     @Column(name = "course_code", nullable = false, unique = true)

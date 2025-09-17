@@ -12,6 +12,12 @@ import java.util.Set;
 @Repository
 public interface StudentCategoryProgressRepository extends JpaRepository<StudentCategoryProgress, Long> {
     List<StudentCategoryProgress> findByUniversityId(String universityId);
+
+    // Return rows for a student ordered by category_id to keep category ordering stable
+    @Query(value = "SELECT * FROM student_category_progress WHERE university_id = :universityId ORDER BY category_id",
+           nativeQuery = true)
+    List<StudentCategoryProgress> findByUniversityIdOrderByCategoryId(@Param("universityId") String universityId);
+
     void deleteByUniversityId(String universityId);
     StudentCategoryProgress findFirstByUniversityId(String universityId);
 
@@ -37,20 +43,20 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
             "  COALESCE(pcr.min_credits, 0) AS min_required_credits,\n" +
             "  COALESCE(a.completed_courses, 0)  AS completed_courses,\n" +
             "  COALESCE(a.completed_credits, 0) AS completed_credits,\n" +
-            "  c.categoryID,\n" +
+            "  c.category_id,\n" +
             "  st.program_id\n" +
             "FROM students st\n" +
             "JOIN categories c ON c.program_id = st.program_id\n" +
-            "LEFT JOIN program_category_requirement pcr ON pcr.program_id = st.program_id AND pcr.category_id = c.categoryID\n" +
+            "LEFT JOIN program_category_requirement pcr ON pcr.program_id = st.program_id AND pcr.category_id = c.category_id\n" +
             "LEFT JOIN (\n" +
             "  SELECT sg.university_id, pcc.category_id, COUNT(*) AS completed_courses, SUM(co.course_credits) AS completed_credits\n" +
             "  FROM student_grades sg\n" +
-            "  JOIN courses co ON co.courseid = sg.course_id\n" +
-            "  JOIN program_course_category pcc ON pcc.course_id = co.courseid\n" +
+            "  JOIN courses co ON co.course_id = sg.course_id\n" +
+            "  JOIN program_course_category pcc ON pcc.course_id = co.course_id\n" +
             "  JOIN students st2 ON st2.student_id = sg.university_id\n" +
             "  WHERE sg.university_id IN (:ids) AND sg.promotion = 'P' AND pcc.program_id = st2.program_id\n" +
             "  GROUP BY sg.university_id, pcc.category_id\n" +
-            ") a ON a.university_id = st.student_id AND a.category_id = c.categoryID\n" +
+            ") a ON a.university_id = st.student_id AND a.category_id = c.category_id\n" +
             "WHERE st.student_id IN (:ids) AND st.program_id IS NOT NULL",
             nativeQuery = true)
     void insertProgressForUniversityIds(@Param("ids") Set<String> universityIds);
