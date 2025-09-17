@@ -16,7 +16,6 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 @Service
-@SuppressWarnings("unused")
 public class NaturalLanguageQueryService {
 
     @Autowired
@@ -47,6 +46,31 @@ public class NaturalLanguageQueryService {
         simplePatterns.add("list programs");
         simplePatterns.add("show courses");
         simplePatterns.add("list students");
+    }
+
+    // Strongly-typed holder for extracted entities to avoid unchecked casts
+    private static class Entities {
+        private final Set<String> programTokens = new HashSet<>();
+        private final Set<String> courseTokens = new HashSet<>();
+        private final Set<String> categoryTokens = new HashSet<>();
+        private final Set<String> years = new HashSet<>();
+        private final Set<String> semesters = new HashSet<>();
+
+        Set<String> getProgramTokens() { return programTokens; }
+        Set<String> getCourseTokens() { return courseTokens; }
+        Set<String> getCategoryTokens() { return categoryTokens; }
+        Set<String> getYears() { return years; }
+        Set<String> getSemesters() { return semesters; }
+
+        String toCacheSegments() {
+            return String.join("|",
+                String.join(",", new TreeSet<>(programTokens)),
+                String.join(",", new TreeSet<>(courseTokens)),
+                String.join(",", new TreeSet<>(categoryTokens)),
+                String.join(",", new TreeSet<>(years)),
+                String.join(",", new TreeSet<>(semesters))
+            );
+        }
     }
 
     private static final String SCHEMA_CONTEXT = """
@@ -163,6 +187,22 @@ public class NaturalLanguageQueryService {
         - Grades reference both students (via university_id) and courses (via course_id)
         - Programs are referenced by categories, students, courses (indirectly), program_course_category, program_category_requirement, and student_category_progress
         - Categories and programs are both referenced in student_category_progress for tracking progress per category in a particular program
+        
+        DOMAIN RULES AND SEMANTICS:
+        - Each program defines a set of categories (e.g., Professional Core, Open Elective, AUC, Sports, etc.).
+        - program_category_requirement stores the minimum requirements per category in a program (min_courses and/or min_credits) that a student must fulfill.
+        - program_course_category maps which courses belong to which category under a program. A course can appear in multiple categories across different programs.
+        - student_grades stores a student's engagement with courses:
+            * promotion = 'P' indicates passed (completed) courses with a grade/grade_point.
+            * promotion = 'F' indicates failed attempts.
+            * promotion = 'R' indicates registered results pending (enrolled but not graded yet).
+            * If a course mapped in program_course_category has no record in student_grades for a student, the student has not taken that course yet.
+        - student_category_progress stores aggregated fulfillment per category for a student (e.g., completedCourses, completedCredits, pending, etc.) derived from student_grades and mappings.
+        - Graduation eligibility: If the student fulfills requirements for ALL categories defined in program_category_requirement for their program, they are eligible for graduation.
+        - When computing category completion:
+            * Completed courses contribute to completed counts/credits per category.
+            * Registered (promotion 'R') courses indicate progress toward fulfilling remaining requirements but are not yet counted as completed.
+            * Missing any category requirement keeps the overall graduation status as incomplete.
         """;
 
     private static final Pattern FORBIDDEN_PATTERNS = Pattern.compile(
@@ -210,9 +250,16 @@ public class NaturalLanguageQueryService {
             }
         }
 
-        // OPTIMIZATION 3: Skip ambiguity check for simple queries
-        if (!needsAmbiguityCheck(naturalLanguageQuery)) {
-            // Skip STEP 1 for simple queries
+        // OPTIMIZATION 3: Entity-aware ambiguity skipping
+        Entities extracted = extractEntities(naturalLanguageQuery);
+        boolean hasSpecificEntities = !extracted.getProgramTokens().isEmpty()
+                || !extracted.getCourseTokens().isEmpty()
+                || !extracted.getCategoryTokens().isEmpty()
+                || !extracted.getYears().isEmpty()
+                || !extracted.getSemesters().isEmpty();
+
+        if (!needsAmbiguityCheck(naturalLanguageQuery) || hasSpecificEntities) {
+            // Skip STEP 1 for simple or entity-specific queries
         } else {
             // STEP 1: Enhanced Ambiguity Detection (only for complex queries)
             Map<String, Object> ambiguityCheck = checkForAmbiguityWithContext(naturalLanguageQuery);
@@ -223,22 +270,28 @@ public class NaturalLanguageQueryService {
 
         // STEP 2: Intelligent Relevant Data Fetching (with caching)
         Map<String, Object> relevantData = fetchRelevantDataIntelligentlyWithCache(naturalLanguageQuery);
+        // attach extracted entities for downstream use (prompt context and caching)
+        relevantData.putIfAbsent("entities", extracted);
         
         // STEP 3: Generate SQL with single AI call (combining generation and optimization)
         String sqlQuery = generateOptimizedQueryDirectly(naturalLanguageQuery, relevantData);
         
-        // STEP 4: Execute with simplified retry (max 1 retry to save API calls)
-        List<Map<String, Object>> results = executeQueryWithLimitedRetry(naturalLanguageQuery, sqlQuery, relevantData);
-        
-        // Cache successful query
-        queryCache.put(queryKey, sqlQuery);
+        // STEP 4: Execute with iterative AI fix as fallback (bounded attempts)
+        Map<String, Object> exec = executeQueryWithLimitedRetry(naturalLanguageQuery, sqlQuery, relevantData);
+        @SuppressWarnings("unchecked") List<Map<String, Object>> results = (List<Map<String, Object>>) exec.get("results");
+        String finalSql = (String) exec.get("sql");
+        boolean fixed = Boolean.TRUE.equals(exec.get("fixed"));
+
+        // Cache successful final SQL (fixed or original)
+        queryCache.put(queryKey, finalSql);
         
         Map<String, Object> response = new HashMap<>();
         response.put("query", naturalLanguageQuery);
-        response.put("sql", sqlQuery);
+        response.put("sql", finalSql);
         response.put("results", results);
         response.put("count", results.size());
         response.put("type", "results");
+        if (fixed) response.put("ai_fix_applied", true);
         
         return response;
     }
@@ -307,16 +360,12 @@ public class NaturalLanguageQueryService {
     }
     
     private String generateCacheKey(String query) {
-        String queryLower = query.toLowerCase().trim();
-        
-        // Generate cache key based on query type
-        if (queryLower.contains("student")) return "students";
-        if (queryLower.contains("course")) return "courses";
-        if (queryLower.contains("program")) return "programs";
-        if (queryLower.contains("grade")) return "grades";
-        if (queryLower.contains("category")) return "categories";
-        
-        return "general";
+        String q = query == null ? "" : query.toLowerCase().trim();
+        Entities ents = extractEntities(q);
+        String type = q.contains("student") ? "students" : q.contains("course") ? "courses" :
+                q.contains("program") ? "programs" : q.contains("grade") ? "grades" :
+                q.contains("category") ? "categories" : "general";
+        return type + "|" + ents.toCacheSegments();
     }
     
     private String generateOptimizedQueryDirectly(String naturalLanguageQuery, Map<String, Object> relevantData) throws Exception {
@@ -392,44 +441,120 @@ public class NaturalLanguageQueryService {
             }
         }
 
+        // Entities summary (compact) to anchor the model without many tokens
+        if (relevantData.containsKey("entities")) {
+            Entities ents = (Entities) relevantData.get("entities");
+            contextInfo.append("\nEXTRACTED ENTITIES:\n");
+            contextInfo.append("Programs: ").append(new TreeSet<>(ents.getProgramTokens())).append('\n');
+            contextInfo.append("Courses: ").append(new TreeSet<>(ents.getCourseTokens())).append('\n');
+            contextInfo.append("Categories: ").append(new TreeSet<>(ents.getCategoryTokens())).append('\n');
+            contextInfo.append("Years: ").append(new TreeSet<>(ents.getYears())).append('\n');
+            contextInfo.append("Semesters: ").append(new TreeSet<>(ents.getSemesters())).append('\n');
+        }
+
+        // Include requirements and mappings summaries if available (compact)
+        if (relevantData.containsKey("requirements")) {
+            contextInfo.append("\nCATEGORY REQUIREMENTS (sample):\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> reqs = (List<Map<String, Object>>) relevantData.get("requirements");
+            for (int i = 0; i < Math.min(12, reqs.size()); i++) {
+                Map<String, Object> r = reqs.get(i);
+                contextInfo.append("- Program ").append(r.get("program_id")).append(", Category '").append(r.get("category_name")).append("' ")
+                        .append("min_courses=").append(r.get("min_courses")).append(", min_credits=").append(r.get("min_credits")).append("\n");
+            }
+        }
+        if (relevantData.containsKey("mappingCounts")) {
+            contextInfo.append("\nMAPPING COUNTS (sample):\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> maps = (List<Map<String, Object>>) relevantData.get("mappingCounts");
+            for (int i = 0; i < Math.min(12, maps.size()); i++) {
+                Map<String, Object> m = maps.get(i);
+                contextInfo.append("- Program ").append(m.get("program_id")).append(", Category ").append(m.get("category_id")).append(": courses=").append(m.get("mapped_courses")).append("\n");
+            }
+        }
+
         // Universal prompt that works for ALL query types
         String universalPrompt = String.format("""
-            You are a SQL expert generating the FINAL, OPTIMIZED query. You have complete context about the database.
+            you are a sql expert generating the final, optimized query. you have complete context about the database.
             
-            Database Schema: %s
+            database schema: %s
             
-            Complete Data Context: %s
+            complete data context: %s
             
-            User Query: "%s"
+            user query: "%s"
             
-            UNIVERSAL REQUIREMENTS (apply to ALL queries):
-            1. Generate a query that returns EXACTLY what the user wants
-            2. Use DISTINCT when needed to avoid duplicates
-            3. Use proper GROUP BY when aggregating data
-            4. For "courses without grades" or "pending results": use promotion = 'R' or grade IS NULL
-            5. Join tables efficiently based on foreign key relationships in schema
-            6. Return meaningful column names and aliases
-            7. Use the actual data patterns shown in the context above
-            8. Handle fuzzy matching: use LOWER() and LIKE for text searches
-            9. For partial matches, use wildcards appropriately
-            10. Optimize performance with proper WHERE clause ordering
-            11. Use proper names for the columns and tables as given in the schema if it is small make it small make sure nothing is changed about names available
+            hard constraints (follow strictly):
+            - use lowercase for all sql: keywords, table names, column names, aliases. match schema identifiers exactly (lowercase).
+            - use only select/with/where/group by/having/order by/limit; never modify data.
+            - prefer exists/not exists for existence checks when appropriate.
+            - avoid duplicates using distinct or proper group by when necessary.
+            - use lower() for text comparisons and like with wildcards for partial matches.
+            - handle null values correctly.
+            - return only the sql query, no explanations.
             
-            CRITICAL INSTRUCTIONS:
-            - Analyze the context data to understand actual database values
-            - Use EXISTS/NOT EXISTS for existence checks when appropriate  
-            - Don't return duplicate rows until requested (use DISTINCT or proper GROUP BY)
-            - Use proper table aliases for readability
-            - Handle NULL values appropriately
-            - Return ONLY the SQL query, no explanations
+            internal reasoning steps (perform silently, do not output):
+            1) ambiguity check: if terms are vague, infer the most reasonable interpretation based on provided context values and schema; do not ask the user.
+            2) derive all related tables that can influence the result (programs, categories, program_category_requirement, program_course_category, courses, student_grades, student_category_progress) and plan correct joins/filters.
+            3) produce the final robust query that will work reliably given data patterns and constraints.
             
-            Generate the optimized SQL query:
+            generate the optimized sql query (lowercase only):
             """, SCHEMA_CONTEXT, contextInfo.toString(), naturalLanguageQuery);
 
-        return callGeminiAPI(universalPrompt, "gemini-2.0-flash-exp", "sql");
+        String aiSql = callGeminiAPI(universalPrompt, "gemini-2.0-flash-exp", "sql");
+        aiSql = enforceLowercaseSQL(aiSql);
+        // ensure read-only and safe before returning
+        validateReadOnlyQuery(aiSql);
+        return aiSql;
+    }
+
+    // Lightweight entity extraction to guide targeted fetching and caching
+    private Entities extractEntities(String query) {
+        String q = query == null ? "" : query.toLowerCase();
+        Entities out = new Entities();
+        // Program hints
+        if (q.contains("computer science")) out.getProgramTokens().add("cse");
+        if (q.contains("aids")) out.getProgramTokens().add("aids");
+        if (q.contains("ece")) out.getProgramTokens().add("ece");
+        if (q.contains("eee")) out.getProgramTokens().add("eee");
+        if (q.contains("mech")) out.getProgramTokens().add("mech");
+        if (q.contains("civil")) out.getProgramTokens().add("civil");
+        for (String token : q.split("[^a-z0-9-]+")) {
+            if (token.matches("[a-z]{2,}-[a-z]+")) out.getProgramTokens().add(token);
+        }
+        for (String token : q.split("[^a-z0-9]+")) {
+            if (token.length() >= 5 && token.matches("[a-z0-9]{5,}")) {
+                out.getCourseTokens().add(token);
+            }
+        }
+        int idx = q.indexOf("course ");
+        if (idx >= 0) {
+            String tail = q.substring(idx + 7).trim();
+            for (String t : tail.split(" ")) { if (t.length() > 2) out.getCourseTokens().add(t); }
+        }
+        String[][] catHints = new String[][]{
+                {"professional core", "pcc"},
+                {"open elective", "oe"},
+                {"professional elective", "pe"},
+                {"basic sciences", "bsc"},
+                {"engineering sciences", "esc"},
+                {"humanities", "has"},
+                {"audit", "auc"},
+                {"value added", "vac"}
+        };
+        for (String[] h : catHints) {
+            if (q.contains(h[0])) out.getCategoryTokens().add(h[0]);
+            if (q.contains(h[1])) out.getCategoryTokens().add(h[1]);
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\b\\d{4}-\\d{4}\\b)|(\\b\\d{2}-\\d{2}\\b)").matcher(q);
+        while (m.find()) { String y = m.group(); if (y != null) out.getYears().add(y); }
+        if (q.contains("odd")) out.getSemesters().add("odd");
+        if (q.contains("even")) out.getSemesters().add("even");
+        if (q.contains("summer")) out.getSemesters().add("summer");
+        if (q.contains("winter")) out.getSemesters().add("winter");
+        m = java.util.regex.Pattern.compile("semester\\s*(\\d)").matcher(q);
+        while (m.find()) { out.getSemesters().add(m.group(1)); }
+        return out;
     }
     
-    private List<Map<String, Object>> executeQueryWithLimitedRetry(String originalQuery, String sqlQuery, Map<String, Object> relevantData) throws Exception {
+    private Map<String, Object> executeQueryWithLimitedRetry(String originalQuery, String sqlQuery, Map<String, Object> relevantData) throws Exception {
         try {
             // Validate query safety
             if (!isQuerySafe(sqlQuery)) {
@@ -437,36 +562,152 @@ public class NaturalLanguageQueryService {
             }
             
             // Execute the query
-            return jdbcTemplate.queryForList(sqlQuery);
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sqlQuery);
+            Map<String, Object> out = new HashMap<>();
+            out.put("results", rows);
+            out.put("sql", sqlQuery);
+            out.put("fixed", false);
+            return out;
             
         } catch (Exception e) {
             System.err.println("Query execution failed: " + e.getMessage());
             
-            // Single retry with simplified AI fix to save API calls
-            try {
-                String fixedQuery = fixQuerySimple(originalQuery, sqlQuery, e.getMessage());
-                if (!isQuerySafe(fixedQuery)) {
-                    throw new IllegalArgumentException("Fixed query contains forbidden operations");
-                }
-                return jdbcTemplate.queryForList(fixedQuery);
-            } catch (Exception retryException) {
-                throw new Exception("Query execution failed: " + e.getMessage() + ". Retry also failed: " + retryException.getMessage());
-            }
+            // Iterative fix with full context until a working query is returned (bounded attempts)
+            String fixedQuery = tryFixQueryIteratively(originalQuery, sqlQuery, e.getMessage(), relevantData, 3);
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(fixedQuery);
+            Map<String, Object> out = new HashMap<>();
+            out.put("results", rows);
+            out.put("sql", fixedQuery);
+            out.put("fixed", true);
+            return out;
         }
     }
     
-    private String fixQuerySimple(String originalQuery, String failedQuery, String errorMessage) throws Exception {
-        // Simplified fix prompt to reduce token usage
-        String fixPrompt = String.format("""
-            Fix SQL error:
-            Query: %s
-            Error: %s
-            Schema: %s
-            
-            Return corrected SQL only.
-            """, failedQuery, errorMessage, SCHEMA_CONTEXT);
+    // removed unused fixQuerySimple
 
-        return callGeminiAPI(fixPrompt, "gemini-pro", "sql"); // Use gemini-pro for fixes to save quota
+    // More robust iterative fixer that shares ALL context + previous error to AI until a working query is produced
+    private String tryFixQueryIteratively(String originalQuery,
+                                          String failedQuery,
+                                          String errorMessage,
+                                          Map<String, Object> relevantData,
+                                          int maxAttempts) throws Exception {
+        StringBuilder contextInfo = new StringBuilder();
+        // Programs
+        if (relevantData.containsKey("programs")) {
+            contextInfo.append("\nAVAILABLE PROGRAMS:\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> programs = (List<Map<String, Object>>) relevantData.get("programs");
+            for (int i = 0; i < Math.min(15, programs.size()); i++) {
+                Map<String, Object> program = programs.get(i);
+                contextInfo.append("- id: ").append(program.get("program_id"))
+                          .append(", code: '").append(program.get("code"))
+                          .append("', name: '").append(program.get("name")).append("'\n");
+            }
+        }
+        // Courses (first 20)
+        if (relevantData.containsKey("courses")) {
+            contextInfo.append("\nCOURSES (sample):\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> courses = (List<Map<String, Object>>) relevantData.get("courses");
+            for (int i = 0; i < Math.min(20, courses.size()); i++) {
+                Map<String, Object> c = courses.get(i);
+                contextInfo.append("- ").append(c.get("course_code")).append(" '")
+                          .append(c.get("course_title")).append("' credits=")
+                          .append(c.get("course_credits"));
+                if (c.containsKey("total_enrolled")) {
+                    contextInfo.append(", enrolled=").append(c.get("total_enrolled"))
+                              .append(", graded=").append(c.get("graded_count"))
+                              .append(", pending=").append(c.get("pending_results"));
+                }
+                contextInfo.append("\n");
+            }
+        }
+        // Categories
+        if (relevantData.containsKey("categories")) {
+            contextInfo.append("\nCATEGORIES (sample):\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> cats = (List<Map<String, Object>>) relevantData.get("categories");
+            for (int i = 0; i < Math.min(20, cats.size()); i++) {
+                Map<String, Object> cat = cats.get(i);
+                contextInfo.append("- '").append(cat.get("category_name")).append("' program=")
+                          .append(cat.get("program_id")).append("\n");
+            }
+        }
+        // Requirements
+        if (relevantData.containsKey("requirements")) {
+            contextInfo.append("\nCATEGORY REQUIREMENTS (sample):\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> reqs = (List<Map<String, Object>>) relevantData.get("requirements");
+            for (int i = 0; i < Math.min(20, reqs.size()); i++) {
+                Map<String, Object> r = reqs.get(i);
+                contextInfo.append("- program ").append(r.get("program_id")).append(", category '")
+                          .append(r.get("category_name")).append("' min_courses=")
+                          .append(r.get("min_courses")).append(", min_credits=")
+                          .append(r.get("min_credits")).append("\n");
+            }
+        }
+        // Mapping counts
+        if (relevantData.containsKey("mappingCounts")) {
+            contextInfo.append("\nMAPPING COUNTS (sample):\n");
+            @SuppressWarnings("unchecked") List<Map<String, Object>> maps = (List<Map<String, Object>>) relevantData.get("mappingCounts");
+            for (int i = 0; i < Math.min(20, maps.size()); i++) {
+                Map<String, Object> m = maps.get(i);
+                contextInfo.append("- program ").append(m.get("program_id")).append(", category ")
+                          .append(m.get("category_id")).append(": courses=")
+                          .append(m.get("mapped_courses")).append("\n");
+            }
+        }
+        // Entities
+        if (relevantData.containsKey("entities")) {
+            Entities ents = (Entities) relevantData.get("entities");
+            contextInfo.append("\nENTITIES:\n");
+            contextInfo.append("programs: ").append(new TreeSet<>(ents.getProgramTokens())).append('\n');
+            contextInfo.append("courses: ").append(new TreeSet<>(ents.getCourseTokens())).append('\n');
+            contextInfo.append("categories: ").append(new TreeSet<>(ents.getCategoryTokens())).append('\n');
+            contextInfo.append("years: ").append(new TreeSet<>(ents.getYears())).append('\n');
+            contextInfo.append("semesters: ").append(new TreeSet<>(ents.getSemesters())).append('\n');
+        }
+
+        String basePrompt = """
+            you are a sql expert fixing a failed query. provide the corrected sql in lowercase only.
+            
+            database schema: %s
+            
+            complete data context:
+            %s
+            
+            original natural language query: "%s"
+            previous sql query (failed): %s
+            error message: %s
+            
+            hard constraints:
+            - use lowercase for all sql: keywords, table names, column names, aliases. match schema identifiers exactly (lowercase).
+            - use only select/with/where/group by/having/order by/limit; never modify data.
+            - prefer exists/not exists where appropriate; avoid duplicates with distinct/group by.
+            - use lower() and like with wildcards for fuzzy text matching.
+            - return only the sql query, no explanations.
+            
+            corrected sql (lowercase only):
+            """;
+
+        String currentFailed = failedQuery;
+        String currentError = errorMessage;
+        Exception lastEx = null;
+        for (int attempt = 1; attempt <= Math.max(1, maxAttempts); attempt++) {
+            String prompt = String.format(basePrompt, SCHEMA_CONTEXT, contextInfo.toString(), originalQuery, currentFailed, currentError);
+            String candidate = callGeminiAPI(prompt, "gemini-pro", "sql");
+            candidate = enforceLowercaseSQL(candidate);
+            try {
+                validateReadOnlyQuery(candidate);
+                if (!isQuerySafe(candidate)) {
+                    throw new IllegalArgumentException("Fixed query contains forbidden operations");
+                }
+                // Try executing
+                jdbcTemplate.queryForList(candidate);
+                return candidate; // success
+            } catch (Exception execEx) {
+                lastEx = execEx;
+                currentFailed = candidate;
+                currentError = execEx.getMessage();
+            }
+        }
+        throw new Exception("AI iterative fix failed after attempts: " + (maxAttempts) + ", last error: " + (lastEx == null ? "unknown" : lastEx.getMessage()));
     }
 
     // STEP 1: Enhanced Ambiguity Detection
@@ -514,344 +755,172 @@ public class NaturalLanguageQueryService {
         return new HashMap<>();
     }
 
-    private Map<String, Object> checkForClarification(String naturalLanguageQuery) throws Exception {
-        String clarificationPrompt = String.format("""
-            You are an AI assistant that analyzes database queries. Be VERY LENIENT and only ask for clarification when absolutely necessary.
-            
-            Database Schema: %s
-            
-            User Query: "%s"
-            
-            IMPORTANT: Only ask for clarification if the query is COMPLETELY IMPOSSIBLE to execute without additional information.
-            
-            If you can make reasonable assumptions or generate a useful query, respond with exactly: "CLEAR"
-            
-            ONLY ask for clarification in these extreme cases:
-            - Query is completely vague like "show me data" or "give me information"
-            - Query contains contradictory requirements that cannot be resolved
-            - Query asks for something that doesn't exist in the database schema at all
-            
-            DO NOT ask for clarification for:
-            - Missing program specification (assume all programs or most common one)
-            - Missing time period (assume all time or most recent)
-            - General queries like "show students" (assume basic student info)
-            - Queries that can be answered with reasonable defaults
-            
-            If clarification is truly needed, write a brief, direct question which is easier to understand.
-            
-            Examples of when NOT to ask:
-            - "show students" → CLEAR (show all students with basic info)
-            - "show grades" → CLEAR (show all grades)
-            - "computer science students" → CLEAR (find CS program and show students)
-            
-            Examples of when to ask:
-            - "show me data" → "What specific data would you like to see?"
-            - "delete everything" → "I can only show data, not delete. What would you like to view?"
-            """, SCHEMA_CONTEXT, naturalLanguageQuery);
-
-        try {
-            String response = callGeminiAPI(clarificationPrompt, "gemini-2.0-flash-exp", "clarification");
-            
-            if ("CLEAR".equals(response.trim())) {
-                return new HashMap<>(); // No clarification needed
-            }
-            
-            // Since we're no longer using JSON format, treat any non-"CLEAR" response as clarification
-            if (!response.trim().isEmpty()) {
-                Map<String, Object> clarification = new HashMap<>();
-                clarification.put("type", "clarification");
-                clarification.put("needsClarification", true);
-                clarification.put("clarificationQuestion", response.trim());
-                return clarification;
-            }
-            
-        } catch (Exception e) {
-            // If clarification check fails completely, proceed with original query
-            System.err.println("Warning: Clarification check failed: " + e.getMessage());
-        }
-        
-        // No clarification needed or clarification check failed
-        return new HashMap<>();
-    }
+    // Removed unused: checkForClarification
 
     // STEP 2: Intelligent Relevant Data Fetching
     private Map<String, Object> fetchRelevantDataIntelligently(String naturalLanguageQuery) throws Exception {
         Map<String, Object> relevantData = new HashMap<>();
-        String queryLower = naturalLanguageQuery.toLowerCase();
-        
+        String q = naturalLanguageQuery == null ? "" : naturalLanguageQuery.toLowerCase();
+        Entities ents = extractEntities(q);
+        Set<String> programTokens = ents.getProgramTokens();
+        Set<String> courseTokens = ents.getCourseTokens();
+        Set<String> categoryTokens = ents.getCategoryTokens();
+        Set<String> years = ents.getYears();
+        Set<String> semesters = ents.getSemesters();
+
         try {
-            // Use intelligent defaults based on query content
-            boolean needsPrograms = queryLower.contains("program") || queryLower.contains("computer") || queryLower.contains("cse") || queryLower.contains("student");
-            boolean needsCourses = queryLower.contains("course") || queryLower.contains("subject") || queryLower.contains("class") || queryLower.contains("grade");
-            boolean needsGrades = queryLower.contains("grade") || queryLower.contains("gpa") || queryLower.contains("score") || queryLower.contains("promotion") || queryLower.contains("result");
-            boolean needsCategories = queryLower.contains("category") || queryLower.contains("elective") || queryLower.contains("core");
-            
-            // Fetch programs if needed
+            boolean needsPrograms = q.contains("program") || q.contains("student") || !programTokens.isEmpty();
+            boolean needsCourses = q.contains("course") || q.contains("subject") || q.contains("class") || q.contains("grade") || !courseTokens.isEmpty();
+            boolean needsGrades = q.contains("grade") || q.contains("gpa") || q.contains("score") || q.contains("promotion") || q.contains("result") || !years.isEmpty() || !semesters.isEmpty();
+            boolean needsCategories = q.contains("category") || q.contains("elective") || q.contains("core") || !categoryTokens.isEmpty();
+            boolean needsEligibility = q.contains("eligibility") || q.contains("eligible") || q.contains("graduate") || q.contains("graduation");
+
+            // Programs: filter by tokens if present, else sample
             if (needsPrograms) {
-                List<Map<String, Object>> programs = jdbcTemplate.queryForList(
-                    "SELECT program_id, code, name FROM programs ORDER BY program_id"
-                );
+                List<Object> params = new ArrayList<>();
+                StringBuilder sql = new StringBuilder("SELECT program_id, code, name FROM programs ");
+                if (!programTokens.isEmpty()) {
+                    sql.append("WHERE ");
+                    List<String> ors = new ArrayList<>();
+                    for (String t : programTokens) {
+                        ors.add("(LOWER(code) LIKE ? OR LOWER(name) LIKE ?)");
+                        String like = "%" + t + "%";
+                        params.add(like);
+                        params.add(like);
+                    }
+                    sql.append(String.join(" OR ", ors));
+                }
+                sql.append(" ORDER BY code LIMIT 10");
+                List<Map<String, Object>> programs = params.isEmpty() ?
+                        jdbcTemplate.queryForList(sql.toString()) :
+                        jdbcTemplate.queryForList(sql.toString(), params.toArray());
                 relevantData.put("programs", programs);
             }
-            
-            // Fetch courses with comprehensive data
+
+            // Courses: filter by tokens; include lightweight enrollment stats; cap results
             if (needsCourses) {
-                List<Map<String, Object>> courses = jdbcTemplate.queryForList(
-                    "SELECT c.course_id, c.course_code, c.course_title, c.course_credits, " +
-                    "COUNT(DISTINCT sg.university_id) as total_enrolled, " +
-                    "COUNT(CASE WHEN sg.grade IS NOT NULL AND sg.grade != '' THEN 1 END) as graded_count, " +
-                    "COUNT(CASE WHEN sg.promotion = 'R' THEN 1 END) as pending_results " +
-                    "FROM courses c " +
-                    "LEFT JOIN student_grades sg ON c.course_id = sg.course_id " +
-                    "GROUP BY c.course_id, c.course_code, c.course_title, c.course_credits " +
-                    "ORDER BY c.course_code LIMIT 50"
-                );
+                List<Object> params = new ArrayList<>();
+                StringBuilder sql = new StringBuilder(
+                        "SELECT c.course_id, c.course_code, c.course_title, c.course_credits, " +
+                        "COUNT(DISTINCT sg.university_id) AS total_enrolled, " +
+                        "SUM(CASE WHEN sg.grade IS NOT NULL AND sg.grade != '' THEN 1 ELSE 0 END) AS graded_count, " +
+                        "SUM(CASE WHEN sg.promotion = 'R' THEN 1 ELSE 0 END) AS pending_results " +
+                        "FROM courses c LEFT JOIN student_grades sg ON c.course_id = sg.course_id ");
+                if (!courseTokens.isEmpty()) {
+                    sql.append("WHERE ");
+                    List<String> ors = new ArrayList<>();
+                    for (String t : courseTokens) {
+                        ors.add("(LOWER(c.course_code) LIKE ? OR LOWER(c.course_title) LIKE ?)");
+                        String like = "%" + t + "%";
+                        params.add(like);
+                        params.add(like);
+                    }
+                    sql.append(String.join(" OR ", ors));
+                }
+                sql.append(" GROUP BY c.course_id, c.course_code, c.course_title, c.course_credits ORDER BY c.course_code LIMIT 30");
+                List<Map<String, Object>> courses = params.isEmpty() ?
+                        jdbcTemplate.queryForList(sql.toString()) :
+                        jdbcTemplate.queryForList(sql.toString(), params.toArray());
                 relevantData.put("courses", courses);
             }
-            
-            // Fetch grade patterns and samples
+
+            // Grades: patterns and samples filtered by years/semesters if present; small caps
             if (needsGrades) {
                 List<Map<String, Object>> gradePatterns = jdbcTemplate.queryForList(
-                    "SELECT grade, grade_point, promotion, COUNT(*) as count " +
-                    "FROM student_grades " +
-                    "GROUP BY grade, grade_point, promotion " +
-                    "ORDER BY count DESC LIMIT 20"
-                );
+                        "SELECT grade, grade_point, promotion, COUNT(*) AS count FROM student_grades " +
+                                "GROUP BY grade, grade_point, promotion ORDER BY count DESC LIMIT 15");
                 relevantData.put("gradePatterns", gradePatterns);
-                
-                List<Map<String, Object>> sampleGrades = jdbcTemplate.queryForList(
-                    "SELECT sg.university_id, c.course_code, c.course_title, sg.grade, sg.grade_point, sg.promotion, sg.academic_year " +
-                    "FROM student_grades sg " +
-                    "JOIN courses c ON sg.course_id = c.course_id " +
-                    "ORDER BY sg.academic_year DESC, c.course_code LIMIT 30"
-                );
+
+                List<Object> params = new ArrayList<>();
+                StringBuilder sql = new StringBuilder(
+                        "SELECT sg.university_id, c.course_code, c.course_title, sg.grade, sg.grade_point, sg.promotion, sg.academic_year " +
+                                "FROM student_grades sg JOIN courses c ON sg.course_id = c.course_id ");
+                List<String> where = new ArrayList<>();
+                if (!years.isEmpty()) {
+                    List<String> ors = new ArrayList<>();
+                    for (String y : years) { ors.add("LOWER(sg.academic_year) LIKE ?"); params.add("%" + y + "%"); }
+                    where.add("(" + String.join(" OR ", ors) + ")");
+                }
+                if (!semesters.isEmpty()) {
+                    List<String> ors = new ArrayList<>();
+                    for (String s : semesters) { ors.add("LOWER(sg.semester) LIKE ?"); params.add("%" + s + "%"); }
+                    where.add("(" + String.join(" OR ", ors) + ")");
+                }
+                if (!where.isEmpty()) sql.append("WHERE ").append(String.join(" AND ", where)).append(' ');
+                sql.append("ORDER BY sg.academic_year DESC, c.course_code LIMIT 15");
+                List<Map<String, Object>> sampleGrades = params.isEmpty() ?
+                        jdbcTemplate.queryForList(sql.toString()) :
+                        jdbcTemplate.queryForList(sql.toString(), params.toArray());
                 relevantData.put("sampleGrades", sampleGrades);
             }
-            
-            // Fetch categories if needed
+
+            // Categories: filter by tokens if present; else sample
             if (needsCategories) {
-                List<Map<String, Object>> categories = jdbcTemplate.queryForList(
-                    "SELECT cat.category_id, cat.category_name, cat.program_id, p.name as program_name " +
-                    "FROM categories cat " +
-                    "JOIN programs p ON cat.program_id = p.program_id " +
-                    "ORDER BY cat.program_id, cat.category_name"
-                );
+                List<Object> params = new ArrayList<>();
+                StringBuilder sql = new StringBuilder(
+                        "SELECT cat.category_id, cat.category_name, cat.program_id, p.name AS program_name " +
+                                "FROM categories cat JOIN programs p ON cat.program_id = p.program_id ");
+                if (!categoryTokens.isEmpty()) {
+                    sql.append("WHERE ");
+                    List<String> ors = new ArrayList<>();
+                    for (String t : categoryTokens) {
+                        ors.add("LOWER(cat.category_name) LIKE ?");
+                        params.add("%" + t + "%");
+                    }
+                    sql.append(String.join(" OR ", ors));
+                }
+                sql.append(" ORDER BY cat.program_id, cat.category_name LIMIT 30");
+                List<Map<String, Object>> categories = params.isEmpty() ?
+                        jdbcTemplate.queryForList(sql.toString()) :
+                        jdbcTemplate.queryForList(sql.toString(), params.toArray());
                 relevantData.put("categories", categories);
             }
-            
+
+            // Requirements and mapping counts to inform eligibility/category completion queries
+            if (needsCategories || needsPrograms || needsEligibility) {
+                // Program category requirements summary
+                List<Map<String, Object>> requirements = jdbcTemplate.queryForList(
+                        "SELECT r.program_id, r.category_id, r.min_courses, r.min_credits, c.category_name " +
+                                "FROM program_category_requirement r JOIN categories c ON r.category_id = c.category_id " +
+                                "ORDER BY r.program_id, c.category_name LIMIT 50");
+                relevantData.put("requirements", requirements);
+
+                // Mapping counts per category to know available courses volume
+                List<Map<String, Object>> mappingCounts = jdbcTemplate.queryForList(
+                        "SELECT p.program_id, p.category_id, COUNT(*) AS mapped_courses " +
+                                "FROM program_course_category p GROUP BY p.program_id, p.category_id " +
+                                "ORDER BY p.program_id, p.category_id LIMIT 50");
+                relevantData.put("mappingCounts", mappingCounts);
+
+                // Very small sample of student_category_progress to show structure
+                try {
+                    List<Map<String, Object>> scpSamples = jdbcTemplate.queryForList(
+                            "SELECT university_id, program_id, category_id, completed_courses, completed_credits, is_completed " +
+                                    "FROM student_category_progress LIMIT 10");
+                    relevantData.put("categoryProgressSamples", scpSamples);
+                } catch (Exception ignored) {
+                    // table may not exist in some environments; ignore
+                }
+            }
+
         } catch (Exception e) {
             System.err.println("Warning: Failed to fetch relevant data: " + e.getMessage());
         }
-        
+
+        // Also expose entities in relevant data
+        relevantData.put("entities", ents);
         return relevantData;
     }
 
-    // STEP 3: Generate Final Query with Complete Context
-    private String generateFinalQueryWithContext(String naturalLanguageQuery, Map<String, Object> relevantData) throws Exception {
-        StringBuilder contextInfo = new StringBuilder();
-        
-        // Build comprehensive context from relevant data
-        if (relevantData.containsKey("programs")) {
-            contextInfo.append("\nAVAILABLE PROGRAMS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> programs = (List<Map<String, Object>>) relevantData.get("programs");
-            for (Map<String, Object> program : programs) {
-                contextInfo.append("- ID: ").append(program.get("program_id"))
-                          .append(", Code: '").append(program.get("code"))
-                          .append("', Name: '").append(program.get("name")).append("'\n");
-            }
-        }
-        
-        if (relevantData.containsKey("courses")) {
-            contextInfo.append("\nCOURSE DATA WITH ENROLLMENT STATUS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> courses = (List<Map<String, Object>>) relevantData.get("courses");
-            for (Map<String, Object> course : courses) {
-                contextInfo.append("- Course: ").append(course.get("course_code"))
-                          .append(" (").append(course.get("course_title")).append(")")
-                          .append(", Enrolled: ").append(course.get("total_enrolled"))
-                          .append(", Graded: ").append(course.get("graded_count"))
-                          .append(", Pending: ").append(course.get("pending_results")).append("\n");
-            }
-        }
-        
-        if (relevantData.containsKey("gradePatterns")) {
-            contextInfo.append("\nGRADE PATTERNS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> patterns = (List<Map<String, Object>>) relevantData.get("gradePatterns");
-            for (Map<String, Object> pattern : patterns) {
-                contextInfo.append("- Grade: '").append(pattern.get("grade"))
-                          .append("', Points: ").append(pattern.get("grade_point"))
-                          .append(", Promotion: '").append(pattern.get("promotion"))
-                          .append("', Count: ").append(pattern.get("count")).append("\n");
-            }
-        }
-        
-        if (relevantData.containsKey("sampleGrades")) {
-            contextInfo.append("\nSAMPLE GRADE RECORDS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> samples = (List<Map<String, Object>>) relevantData.get("sampleGrades");
-            for (Map<String, Object> sample : samples) {
-                contextInfo.append("- Student: ").append(sample.get("university_id"))
-                          .append(", Course: ").append(sample.get("course_code"))
-                          .append(", Grade: '").append(sample.get("grade"))
-                          .append("', Promotion: '").append(sample.get("promotion"))
-                          .append("', Year: ").append(sample.get("academic_year")).append("\n");
-            }
-        }
-
-        String finalPrompt = String.format("""
-            You are a SQL expert generating the FINAL, PERFECT query. You have complete context about the data.
-            
-            Database Schema: %s
-            
-            Complete Data Context: %s
-            
-            User Query: "%s"
-            
-            CRITICAL REQUIREMENTS:
-            1. Generate a query that returns EXACTLY what the user wants
-            2. Use DISTINCT when needed to avoid duplicates
-            3. Use proper GROUP BY when aggregating
-            4. For "courses without grades" or "pending results": use promotion = 'R' or grade IS NULL
-            5. Join tables efficiently and correctly
-            6. Return meaningful column names
-            7. Use the actual data patterns shown above
-            
-            AVOID COMMON MISTAKES:
-            - Don't return duplicate rows (use DISTINCT or proper GROUP BY)
-            - Don't join unnecessarily if you just need course info
-            - Use EXISTS/NOT EXISTS for existence checks
-            - Use proper WHERE conditions based on data patterns
-            
-            Return ONLY the SQL query, no explanations.
-            """, SCHEMA_CONTEXT, contextInfo.toString(), naturalLanguageQuery);
-
-        return callGeminiAPI(finalPrompt, "gemini-2.0-flash-exp", "sql");
-    }
+    // Removed unused: generateFinalQueryWithContext
 
     // STEP 4: Query Optimization
-    private String optimizeQuery(String sqlQuery, String originalQuery) throws Exception {
-        String optimizationPrompt = String.format("""
-            You are a SQL optimization expert. Optimize this query for performance and correctness.
-            
-            Original User Request: "%s"
-            Current SQL Query: %s
-            
-            OPTIMIZATION CHECKLIST:
-            1. Remove unnecessary JOINs
-            2. Use DISTINCT only when needed
-            3. Use EXISTS instead of IN for better performance
-            4. Optimize WHERE clause order
-            5. Use proper indexes (assume standard indexes exist)
-            6. Ensure GROUP BY is used correctly with aggregates
-            7. Remove redundant conditions
-            8. Use LIMIT if appropriate for large result sets
-            
-            Return ONLY the optimized SQL query, no explanations.
-            """, originalQuery, sqlQuery);
-
-        try {
-            return callGeminiAPI(optimizationPrompt, "gemini-2.0-flash-exp", "sql");
-        } catch (Exception e) {
-            // If optimization fails, return original query
-            System.err.println("Warning: Query optimization failed: " + e.getMessage());
-            return sqlQuery;
-        }
-    }
+    // Removed unused: optimizeQuery
 
     // STEP 5: Execute Query with Retry and AI Error Correction
-    private List<Map<String, Object>> executeQueryWithRetry(String originalQuery, String sqlQuery, Map<String, Object> relevantData) throws Exception {
-        int maxRetries = 2;
-        String currentQuery = sqlQuery;
-        
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                // Validate query safety
-                if (!isQuerySafe(currentQuery)) {
-                    throw new IllegalArgumentException("Query contains forbidden operations");
-                }
-                
-                // Execute the query
-                List<Map<String, Object>> results = jdbcTemplate.queryForList(currentQuery);
-                
-                // Log successful execution
-                System.out.println("Query executed successfully on attempt " + attempt);
-                return results;
-                
-            } catch (Exception e) {
-                System.err.println("Query execution failed on attempt " + attempt + ": " + e.getMessage());
-                System.err.println("Failed query: " + currentQuery);
-                
-                if (attempt == maxRetries) {
-                    throw new Exception("Query execution failed after " + maxRetries + " attempts: " + e.getMessage());
-                }
-                
-                // Try to fix the query using AI
-                try {
-                    currentQuery = fixQueryWithAI(originalQuery, currentQuery, e.getMessage(), relevantData);
-                    System.out.println("AI suggested fix for attempt " + (attempt + 1) + ": " + currentQuery);
-                } catch (Exception fixException) {
-                    System.err.println("AI query fix failed: " + fixException.getMessage());
-                    throw new Exception("Query execution and AI fix both failed: " + e.getMessage());
-                }
-            }
-        }
-        
-        throw new Exception("Unexpected error in query execution retry logic");
-    }
+    // Removed unused: executeQueryWithRetry
 
-    private String fixQueryWithAI(String originalQuery, String failedQuery, String errorMessage, Map<String, Object> relevantData) throws Exception {
-        StringBuilder contextInfo = new StringBuilder();
-        
-        // Build context from relevant data for error fixing
-        if (relevantData.containsKey("programs")) {
-            contextInfo.append("\nAVAILABLE PROGRAMS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> programs = (List<Map<String, Object>>) relevantData.get("programs");
-            for (Map<String, Object> program : programs) {
-                contextInfo.append("- ID: ").append(program.get("program_id"))
-                          .append(", Code: '").append(program.get("code"))
-                          .append("', Name: '").append(program.get("name")).append("'\n");
-            }
-        }
-        
-        if (relevantData.containsKey("courses")) {
-            contextInfo.append("\nCOURSE DATA:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> courses = (List<Map<String, Object>>) relevantData.get("courses");
-            for (int i = 0; i < Math.min(courses.size(), 10); i++) {
-                Map<String, Object> course = courses.get(i);
-                contextInfo.append("- Course: ").append(course.get("course_code"))
-                          .append(" (").append(course.get("course_title")).append(")\n");
-            }
-        }
-
-        String fixPrompt = String.format("""
-            You are a SQL expert fixing a failed query. The query failed with an error and needs to be corrected.
-            
-            Database Schema: %s
-            
-            Data Context: %s
-            
-            Original User Request: "%s"
-            Failed SQL Query: %s
-            Error Message: %s
-            
-            COMMON ERROR FIXES:
-            1. Column name errors: Check actual column names in schema
-            2. Table name errors: Verify table names match schema exactly
-            3. JOIN errors: Ensure foreign key relationships are correct
-            4. Syntax errors: Fix SQL syntax issues
-            5. Data type errors: Use proper data type casting
-            6. Aggregate function errors: Use proper GROUP BY clauses
-            
-            Generate a corrected SQL query that fixes the error while maintaining the original intent.
-            Return ONLY the corrected SQL query, no explanations.
-            """, SCHEMA_CONTEXT, contextInfo.toString(), originalQuery, failedQuery, errorMessage);
-
-        return callGeminiAPI(fixPrompt, "gemini-pro", "sql");
-    }
+    // Removed unused: fixQueryWithAI (we keep fixQuerySimple for one-shot correction)
 
     // Helper method to validate query safety
     private boolean isQuerySafe(String query) {
@@ -875,259 +944,6 @@ public class NaturalLanguageQueryService {
         }
         
         return true;
-    }
-
-    private Map<String, Object> gatherQueryContext(String naturalLanguageQuery) throws Exception {
-        Map<String, Object> context = new HashMap<>();
-        String queryLower = naturalLanguageQuery.toLowerCase();
-        
-        try {
-            // Gather program names and codes for fuzzy matching
-            if (queryLower.contains("program") || queryLower.contains("computer") || queryLower.contains("cse") || 
-                queryLower.contains("science") || queryLower.contains("tech") || queryLower.contains("student")) {
-                List<Map<String, Object>> programs = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT program_id, code, name FROM programs"
-                );
-                context.put("programs", programs);
-            }
-            
-            // Gather academic years for fuzzy matching
-            if (queryLower.contains("year") || queryLower.contains("grade") || queryLower.matches(".*\\d{2,4}.*")) {
-                List<Map<String, Object>> academicYears = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT academic_year FROM student_grades WHERE academic_year IS NOT NULL ORDER BY academic_year"
-                );
-                context.put("academicYears", academicYears);
-            }
-            
-            // Gather semesters for fuzzy matching
-            if (queryLower.contains("semester") || queryLower.contains("fall") || queryLower.contains("spring") || 
-                queryLower.contains("summer") || queryLower.contains("winter")) {
-                List<Map<String, Object>> semesters = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT semester FROM student_grades WHERE semester IS NOT NULL ORDER BY semester"
-                );
-                context.put("semesters", semesters);
-            }
-            
-            // Gather course codes and titles for fuzzy matching
-            if (queryLower.contains("course") || queryLower.contains("subject") || queryLower.contains("class")) {
-                List<Map<String, Object>> courses = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT course_id, course_code, course_title FROM courses"
-                );
-                context.put("courses", courses);
-            }
-            
-            // Gather categories for fuzzy matching
-            if (queryLower.contains("category") || queryLower.contains("type") || queryLower.contains("elective") || 
-                queryLower.contains("core") || queryLower.contains("mandatory")) {
-                List<Map<String, Object>> categories = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT category_id, category_name, program_id FROM categories"
-                );
-                context.put("categories", categories);
-            }
-            
-            // Gather grade values and sample data for fuzzy matching
-            if (queryLower.contains("grade") || queryLower.contains("gpa") || queryLower.contains("score") ||
-                queryLower.contains("pass") || queryLower.contains("fail") || queryLower.contains("promotion")) {
-                List<Map<String, Object>> grades = jdbcTemplate.queryForList(
-                    "SELECT DISTINCT grade, grade_point, promotion FROM student_grades WHERE grade IS NOT NULL ORDER BY grade_point DESC LIMIT 10"
-                );
-                context.put("grades", grades);
-                
-                // Get sample student_grades data to understand the structure
-                List<Map<String, Object>> sampleGrades = jdbcTemplate.queryForList(
-                    "SELECT sg.university_id, sg.course_id, sg.grade, sg.grade_point, sg.promotion, sg.academic_year, sg.semester, c.course_code, c.course_title " +
-                    "FROM student_grades sg JOIN courses c ON sg.course_id = c.course_id " +
-                    "LIMIT 5"
-                );
-                context.put("sampleGrades", sampleGrades);
-            }
-            
-            // Get sample data for courses and their enrollment status
-            if (queryLower.contains("course") || queryLower.contains("subject") || queryLower.contains("class") ||
-                queryLower.contains("not given") || queryLower.contains("pending") || queryLower.contains("missing")) {
-                // Get courses with and without grades
-                List<Map<String, Object>> courseGradeStatus = jdbcTemplate.queryForList(
-                    "SELECT c.course_id, c.course_code, c.course_title, " +
-                    "COUNT(sg.sno) as enrolled_students, " +
-                    "COUNT(CASE WHEN sg.grade IS NOT NULL AND sg.grade != '' THEN 1 END) as graded_students, " +
-                    "COUNT(CASE WHEN sg.promotion = 'R' THEN 1 END) as pending_results " +
-                    "FROM courses c " +
-                    "LEFT JOIN student_grades sg ON c.course_id = sg.course_id " +
-                    "GROUP BY c.course_id, c.course_code, c.course_title " +
-                    "LIMIT 10"
-                );
-                context.put("courseGradeStatus", courseGradeStatus);
-            }
-            
-        } catch (Exception e) {
-            // If context gathering fails, continue with empty context
-            System.err.println("Warning: Failed to gather query context: " + e.getMessage());
-        }
-        
-        return context;
-    }
-
-    private String convertToSQLWithContext(String naturalLanguageQuery, Map<String, Object> contextData) throws Exception {
-        // Try with fallback mechanism for quota limits
-        Exception lastException = null;
-        
-        // First try with gemini-2.0-flash-exp
-        try {
-            return callGeminiAPIWithContext(naturalLanguageQuery, "gemini-2.0-flash-exp", contextData);
-        } catch (Exception e) {
-            lastException = e;
-            if (isQuotaExceeded(e)) {
-                // Try with gemini-pro as fallback
-                try {
-                    return callGeminiAPIWithContext(naturalLanguageQuery, "gemini-pro", contextData);
-                } catch (Exception e2) {
-                    lastException = e2;
-                    if (isQuotaExceeded(e2)) {
-                        // If both models are quota exceeded, provide helpful error
-                        throw new IllegalStateException("Gemini API quota exceeded for all available models. Please check your billing or try again later.");
-                    }
-                }
-            }
-        }
-        
-        // If we get here, throw the last exception
-        throw new RuntimeException("Failed to generate SQL query", lastException);
-    }
-
-    private String callGeminiAPIWithContext(String naturalLanguageQuery, String model, Map<String, Object> contextData) throws Exception {
-        // Build context information for better matching
-        StringBuilder contextInfo = new StringBuilder();
-        
-        if (contextData.containsKey("programs")) {
-            contextInfo.append("\nAVAILABLE PROGRAMS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> programs = (List<Map<String, Object>>) contextData.get("programs");
-            for (Map<String, Object> program : programs) {
-                contextInfo.append("- ID: ").append(program.get("program_id"))
-                          .append(", Code: '").append(program.get("code"))
-                          .append("', Name: '").append(program.get("name")).append("'\n");
-            }
-        }
-        
-        if (contextData.containsKey("academicYears")) {
-            contextInfo.append("\nAVAILABLE ACADEMIC YEARS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> years = (List<Map<String, Object>>) contextData.get("academicYears");
-            for (Map<String, Object> year : years) {
-                contextInfo.append("- '").append(year.get("academic_year")).append("'\n");
-            }
-        }
-        
-        if (contextData.containsKey("semesters")) {
-            contextInfo.append("\nAVAILABLE SEMESTERS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> semesters = (List<Map<String, Object>>) contextData.get("semesters");
-            for (Map<String, Object> semester : semesters) {
-                contextInfo.append("- '").append(semester.get("semester")).append("'\n");
-            }
-        }
-        
-        if (contextData.containsKey("courses")) {
-            contextInfo.append("\nAVAILABLE COURSES (showing first 20):\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> courses = (List<Map<String, Object>>) contextData.get("courses");
-            int count = 0;
-            for (Map<String, Object> course : courses) {
-                if (count++ >= 20) break;
-                contextInfo.append("- Code: '").append(course.get("course_code"))
-                          .append("', Title: '").append(course.get("course_title")).append("'\n");
-            }
-        }
-        
-        if (contextData.containsKey("categories")) {
-            contextInfo.append("\nAVAILABLE CATEGORIES:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> categories = (List<Map<String, Object>>) contextData.get("categories");
-            for (Map<String, Object> category : categories) {
-                contextInfo.append("- ID: ").append(category.get("categoryID"))
-                          .append(", Name: '").append(category.get("category_name"))
-                          .append("', Program ID: ").append(category.get("program_id")).append("\n");
-            }
-        }
-        
-        if (contextData.containsKey("grades")) {
-            contextInfo.append("\nAVAILABLE GRADES:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> grades = (List<Map<String, Object>>) contextData.get("grades");
-            for (Map<String, Object> grade : grades) {
-                contextInfo.append("- Grade: '").append(grade.get("grade"))
-                          .append("', Points: ").append(grade.get("grade_point"))
-                          .append(", Promotion: '").append(grade.get("promotion")).append("'\n");
-            }
-        }
-        
-        if (contextData.containsKey("sampleGrades")) {
-            contextInfo.append("\nSAMPLE STUDENT GRADES DATA:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> sampleGrades = (List<Map<String, Object>>) contextData.get("sampleGrades");
-            for (Map<String, Object> sample : sampleGrades) {
-                contextInfo.append("- Student: ").append(sample.get("university_id"))
-                          .append(", Course: ").append(sample.get("course_code"))
-                          .append(" (").append(sample.get("course_title")).append(")")
-                          .append(", Grade: '").append(sample.get("grade"))
-                          .append("', Points: ").append(sample.get("grade_point"))
-                          .append(", Promotion: '").append(sample.get("promotion"))
-                          .append("', Year: ").append(sample.get("academic_year"))
-                          .append(", Semester: ").append(sample.get("semester")).append("\n");
-            }
-        }
-        
-        if (contextData.containsKey("courseGradeStatus")) {
-            contextInfo.append("\nCOURSE GRADING STATUS:\n");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> courseStatus = (List<Map<String, Object>>) contextData.get("courseGradeStatus");
-            for (Map<String, Object> course : courseStatus) {
-                contextInfo.append("- Course: ").append(course.get("course_code"))
-                          .append(" (").append(course.get("course_title")).append(")")
-                          .append(", Enrolled: ").append(course.get("enrolled_students"))
-                          .append(", Graded: ").append(course.get("graded_students"))
-                          .append(", Pending Results (R): ").append(course.get("pending_results")).append("\n");
-            }
-        }
-
-        String finalPrompt = String.format("""
-            You are a SQL expert. Convert the following natural language query to a valid MySQL SELECT query.
-            
-            %s
-            
-            IMPORTANT DATA UNDERSTANDING RULES:
-            - ANALYZE the sample data above to understand data patterns and relationships
-            - For "grades not given" or "pending results": Look for promotion = 'R' (Result pending)
-            - For "courses without grades": Check where grade IS NULL or grade = '' AND promotion = 'R'
-            - For "students without grades": Look for entries where grade is missing but enrollment exists
-            - Use the COURSE GRADING STATUS data to understand which courses have pending results
-            - Use SAMPLE STUDENT GRADES DATA to understand the actual data structure
-            
-            FUZZY MATCHING RULES:
-            - Use CASE-INSENSITIVE matching with LOWER() function for text comparisons
-            - Use LIKE with wildcards for partial matches (e.g., LIKE '%%computer%%' for "computer science")
-            - For years, match patterns like '2025-2026' with '25-26' or '2025' 
-            - For course codes, use LIKE for partial matches (e.g., 'UX' should match 'UX DESIGN')
-            - For program names, match variations like 'computer science' with 'B.Tech CSE' or 'CSE'
-            - When user mentions partial data, find the closest match from available values above
-            
-            CONTEXT DATA (use this to understand the actual database state):
-            %s
-            
-            CONSTRAINTS:
-            - ONLY use SELECT, JOIN, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
-            - NO INSERT, UPDATE, DELETE, DROP, etc.
-            - Use proper table aliases
-            - Handle JOINs correctly based on foreign key relationships
-            - Return ONLY the SQL query, no explanations
-            - Base your query logic on the actual sample data patterns shown above
-            
-            Natural Language Query: %s
-            
-            SQL Query:
-            """, SCHEMA_CONTEXT, contextInfo.toString(), naturalLanguageQuery);
-
-        return callGeminiAPI(finalPrompt, model, "sql");
     }
 
     
@@ -1222,6 +1038,34 @@ public class NaturalLanguageQueryService {
             message.contains("RESOURCE_EXHAUSTED") ||
             message.contains("Too Many Requests")
         );
+    }
+
+    // Lowercase SQL outside of string/identifier quotes to comply with schema casing
+    private String enforceLowercaseSQL(String sql) {
+        if (sql == null) return null;
+        String s = sql.trim();
+        StringBuilder sb = new StringBuilder(s.length());
+        boolean inSingle = false, inDouble = false, inBacktick = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\'' && !inDouble && !inBacktick) {
+                inSingle = !inSingle;
+                sb.append(c);
+            } else if (c == '"' && !inSingle && !inBacktick) {
+                inDouble = !inDouble;
+                sb.append(c);
+            } else if (c == '`' && !inSingle && !inDouble) {
+                inBacktick = !inBacktick;
+                sb.append(c);
+            } else {
+                if (inSingle || inDouble || inBacktick) {
+                    sb.append(c);
+                } else {
+                    sb.append(Character.toLowerCase(c));
+                }
+            }
+        }
+        return sb.toString();
     }
 
     private void validateReadOnlyQuery(String sqlQuery) {

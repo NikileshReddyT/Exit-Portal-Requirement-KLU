@@ -165,7 +165,7 @@ const AdminLayout = () => {
       items: [
         { to: `${basePath}/insights`, label: 'Insights Overview', icon: <FiBarChart2 /> },
         { to: `${basePath}/categories-summary`, label: 'Categories Summary', icon: <FiCompass /> },
-        { to: `${basePath}/analytics`, label: 'Analytics', icon: <FiDatabase /> },
+        { to: `${basePath}/analytics`, label: 'AI Query System', icon: <FiDatabase /> },
       ],
     },
   ];

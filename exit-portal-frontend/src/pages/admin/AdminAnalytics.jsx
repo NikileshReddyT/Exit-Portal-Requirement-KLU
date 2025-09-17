@@ -460,7 +460,7 @@ const AdminAnalytics = () => {
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <FiDatabase className="text-red-600" />
-              Natural Language Analytics
+              AI Powered Database Query System
             </h2>
             <p className="text-gray-600 mt-1">Ask questions about your data in plain English</p>
           </div>
