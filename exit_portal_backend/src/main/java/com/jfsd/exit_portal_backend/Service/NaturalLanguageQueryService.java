@@ -222,9 +222,10 @@ public class NaturalLanguageQueryService {
             try {
                 List<Map<String, Object>> results = jdbcTemplate.queryForList(cachedSql);
                 Map<String, Object> response = new HashMap<>();
-                response.put("type", "success");
-                response.put("data", results);
-                response.put("query", cachedSql);
+                response.put("type", "results");
+                response.put("results", results);
+                response.put("count", results.size());
+                response.put("sql", cachedSql);
                 response.put("cached", true);
                 return response;
             } catch (Exception e) {
@@ -240,9 +241,10 @@ public class NaturalLanguageQueryService {
                 List<Map<String, Object>> results = jdbcTemplate.queryForList(simpleSql);
                 queryCache.put(queryKey, simpleSql); // Cache for future use
                 Map<String, Object> response = new HashMap<>();
-                response.put("type", "success");
-                response.put("data", results);
-                response.put("query", simpleSql);
+                response.put("type", "results");
+                response.put("results", results);
+                response.put("count", results.size());
+                response.put("sql", simpleSql);
                 response.put("pattern_matched", true);
                 return response;
             } catch (Exception e) {
