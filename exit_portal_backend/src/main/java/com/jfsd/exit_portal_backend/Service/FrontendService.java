@@ -11,6 +11,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,6 +62,7 @@ public class FrontendService {
     @Autowired
     private ProgramCourseCategoryRepository programCourseCategoryRepository;
 
+    @Cacheable(cacheNames = "student_api", key = "'getStudentCategoryProgress:' + #universityId")
     public List<StudentCategoryProgressDTO> getStudentCategoryProgress(String universityId) {
         long _startNanos = System.nanoTime();
         // Fetch persisted/enriched progress rows (3NF-aware, program-scoped)
@@ -138,10 +140,12 @@ public class FrontendService {
         return studentData;
     }
 
+    @Cacheable(cacheNames = "student_api", key = "'getCoursesByCategory:' + #universityId + ':' + #category")
     public List<StudentGrade> getCoursesByCategory(String universityId, String category) {
         return studentGradeRepository.findByStudentIdAndCategory(universityId, category);
     }
 
+    @Cacheable(cacheNames = "student_api", key = "'getAllCoursesByCategory:' + #categoryName")
     public List<Courses> getAllCoursesByCategory(String categoryName) {
         List<ProgramCourseCategory> mappings = programCourseCategoryRepository.findByCategoryName(categoryName);
         if (mappings == null || mappings.isEmpty()) {
@@ -154,6 +158,7 @@ public class FrontendService {
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "student_api", key = "'generateStudentReport:' + #universityId")
     public StudentCourseReportDTO generateStudentReport(String universityId) {
         long _startNanos = System.nanoTime();
         try {

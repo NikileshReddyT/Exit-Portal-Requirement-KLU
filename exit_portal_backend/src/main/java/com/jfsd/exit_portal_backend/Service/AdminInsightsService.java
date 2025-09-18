@@ -22,6 +22,7 @@ import com.jfsd.exit_portal_backend.Model.Student;
 import com.jfsd.exit_portal_backend.Model.StudentGrade;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -53,6 +54,7 @@ public class AdminInsightsService {
     @Autowired
     private CoursesRepository coursesRepository;
 
+    @Cacheable(cacheNames = "admin_api", key = "'buildDashboard:' + #userType + ':' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> buildDashboard(String userType, Long programId) {
         Map<String, Object> dashboard = new LinkedHashMap<>();
         dashboard.put("userType", userType);
@@ -129,6 +131,7 @@ public class AdminInsightsService {
     }
 
     // Get basic stats for dashboard
+    @Cacheable(cacheNames = "admin_api", key = "'getStats:' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> getStats(Long programId) {
         Map<String, Object> stats = new LinkedHashMap<>();
         
@@ -157,6 +160,7 @@ public class AdminInsightsService {
     }
 
     // Get program details by ID
+    @Cacheable(cacheNames = "admin_api", key = "'getProgramById:' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> getProgramById(Long programId) {
         if (programId == null) return Collections.emptyMap();
         
@@ -173,6 +177,7 @@ public class AdminInsightsService {
     }
 
     // Build dashboard strictly for a given program (used by SUPER_ADMIN drill-down)
+    @Cacheable(cacheNames = "admin_api", key = "'buildDashboardForProgram:' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> buildDashboardForProgram(Long programId) {
         System.out.println("AdminInsightsService.buildDashboardForProgram - programId: " + programId);
         if (programId == null) return Collections.emptyMap();
@@ -231,6 +236,7 @@ public class AdminInsightsService {
     }
 
     // List programs: id, code, name
+    @Cacheable(cacheNames = "admin_api", key = "'listPrograms'")
     public List<Map<String, Object>> listPrograms() {
         return programRepository.findAll().stream()
                 .map(p -> {
@@ -244,6 +250,7 @@ public class AdminInsightsService {
     }
 
     // Rank programs by completion rate; worstFirst=true returns lowest first
+    @Cacheable(cacheNames = "admin_api", key = "'rankPrograms:' + #limit + ':' + #worstFirst")
     public List<Map<String, Object>> rankPrograms(int limit, boolean worstFirst) {
         List<Program> programs = programRepository.findAll();
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -272,6 +279,7 @@ public class AdminInsightsService {
     }
 
     // ===== Data Explorer Listings =====
+    @Cacheable(cacheNames = "admin_api", key = "'listStudents:' + T(java.util.Objects).toString(#programId)")
     public List<Map<String, Object>> listStudents(Long programId) {
         List<Student> students;
         if (programId != null) {
@@ -293,6 +301,7 @@ public class AdminInsightsService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'listCategories:' + T(java.util.Objects).toString(#programId)")
     public List<Map<String, Object>> listCategories(Long programId) {
         List<Categories> cats;
         if (programId != null) {
@@ -314,6 +323,7 @@ public class AdminInsightsService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'listCourses:' + T(java.util.Objects).toString(#programId)")
     public List<Map<String, Object>> listCourses(Long programId) {
         if (programId == null) {
             // All courses without program scoping
@@ -329,6 +339,7 @@ public class AdminInsightsService {
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'listMappings:' + T(java.util.Objects).toString(#programId)")
     public List<Map<String, Object>> listMappings(Long programId) {
         List<ProgramCourseCategory> mappings;
         if (programId != null) {
@@ -358,6 +369,7 @@ public class AdminInsightsService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'listRequirements:' + T(java.util.Objects).toString(#programId)")
     public List<Map<String, Object>> listRequirements(Long programId) {
         List<ProgramCategoryRequirement> reqs;
         if (programId != null) {
@@ -384,6 +396,7 @@ public class AdminInsightsService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'listGrades:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId)")
     public List<Map<String, Object>> listGrades(Long programId, String studentId) {
         List<StudentGrade> grades;
         if (studentId != null && !studentId.isBlank()) {
@@ -417,6 +430,7 @@ public class AdminInsightsService {
     }
 
     // Paginated grades listing for performance
+    @Cacheable(cacheNames = "admin_api", key = "'listGradesPaged:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId) + ':' + T(java.util.Objects).toString(#category) + ':' + #page + ':' + #size")
     public Map<String, Object> listGradesPaged(Long programId, String studentId, String category, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
         Page<StudentGrade> pg;
@@ -466,6 +480,7 @@ public class AdminInsightsService {
     }
 
     // List only courses that belong to a specific category (optionally scoped by program)
+    @Cacheable(cacheNames = "admin_api", key = "'listCoursesByCategory:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#categoryName)")
     public List<Map<String, Object>> listCoursesByCategory(Long programId, String categoryName) {
         if (categoryName == null || categoryName.isBlank()) return Collections.emptyList();
         List<ProgramCourseCategory> mappings;
@@ -483,6 +498,7 @@ public class AdminInsightsService {
     }
 
     // List students who completed a given course (promotion == 'P'), optionally scoped by program
+    @Cacheable(cacheNames = "admin_api", key = "'listCourseCompleters:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#courseCode)")
     public List<Map<String, Object>> listCourseCompleters(Long programId, String courseCode) {
         if (courseCode == null || courseCode.isBlank()) return Collections.emptyList();
         List<StudentGrade> rows;
@@ -512,6 +528,7 @@ public class AdminInsightsService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'listProgress:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId)")
     public List<Map<String, Object>> listProgress(Long programId, String studentId) {
         List<StudentCategoryProgress> rows;
         if (studentId != null && !studentId.isBlank() && programId != null) {
@@ -596,6 +613,7 @@ public class AdminInsightsService {
     }
 
     // ===== Overview insights helpers =====
+    @Cacheable(cacheNames = "admin_api", key = "'getRiskSummary:' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> getRiskSummary(Long programId) {
         Map<String, Object> m = new LinkedHashMap<>();
         long exact0 = progressRepository.countCompletedStudents(programId);
@@ -610,6 +628,7 @@ public class AdminInsightsService {
         return m;
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'getCompletionTrend:' + T(java.util.Objects).toString(#programId)")
     public List<Map<String, Object>> getCompletionTrend(Long programId) {
         List<Object[]> rows = (programId != null)
                 ? studentGradeRepository.countPromotionsByTermAndProgram(programId)
@@ -634,6 +653,7 @@ public class AdminInsightsService {
           .collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'getCoursePassLeaderboard:' + T(java.util.Objects).toString(#programId) + ':' + #limit")
     public Map<String, Object> getCoursePassLeaderboard(Long programId, int limit) {
         List<Object[]> rows = (programId != null)
                 ? studentGradeRepository.aggregateCoursePassRatesByProgram(programId)
@@ -665,6 +685,7 @@ public class AdminInsightsService {
         return out;
     }
 
+    @Cacheable(cacheNames = "admin_api", key = "'getDataFreshness:' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> getDataFreshness(Long programId) {
         Object[] r = (programId != null)
                 ? studentGradeRepository.findMaxYearAndSemesterByProgram(programId)
