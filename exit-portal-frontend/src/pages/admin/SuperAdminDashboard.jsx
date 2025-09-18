@@ -151,32 +151,38 @@ const SuperAdminDashboard = () => {
 
         {/* Program Selector */}
         <div className="mt-8 bg-white rounded-lg shadow p-6">
-          <div className="flex flex-col md:flex-row md:items-end gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select Program</label>
-              <select
-                className="w-full border rounded px-3 py-2"
-                onChange={(e) => {
-                  const id = e.target.value;
-                  if (id) navigate(`/superadmin/overview?programId=${id}`);
-                }}
-                defaultValue=""
-              >
-                <option value="">-- Choose a program --</option>
-                {programs.map(p => (
-                  <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
-                ))}
-              </select>
+          {metaLoading ? (
+            <div className="flex items-center justify-center h-24">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-red-900 border-t-transparent"></div>
+              <span className="ml-3 text-gray-500">Loading programs...</span>
             </div>
-            {metaLoading && <div className="text-sm text-gray-500">Loading programs...</div>}
-          </div>
+          ) : (
+            <div className="flex flex-col md:flex-row md:items-end gap-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Program</label>
+                <select
+                  className="w-full border rounded px-3 py-2"
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (id) navigate(`/superadmin/overview?programId=${id}`);
+                  }}
+                  defaultValue=""
+                >
+                  <option value="">-- Choose a program --</option>
+                  {programs.map(p => (
+                    <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Program Rankings */}
-        {rankings && rankings.length > 0 && (
+        {metaLoading ? (
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Program Rankings (Worst to Best)</h2>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto animate-pulse">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -188,24 +194,66 @@ const SuperAdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {rankings.map((r) => (
-                    <tr key={r.programId}>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{r.programCode} - {r.programName}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{r.totalStudents}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{r.completedStudents}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{(r.completionRate * 100).toFixed(1)}%</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-right">
-                        <button
-                          className="px-3 py-1 border rounded hover:bg-gray-50"
-                          onClick={() => navigate(`/superadmin/overview?programId=${r.programId}`)}
-                        >View</button>
-                      </td>
-                    </tr>
-                  ))}
+                  <tr>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-48"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-4 py-3 text-right"><div className="h-8 bg-gray-200 rounded w-16 inline-block"></div></td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-56"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-28"></div></td>
+                    <td className="px-4 py-3 text-right"><div className="h-8 bg-gray-200 rounded w-16 inline-block"></div></td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-40"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                    <td className="px-4 py-3 text-right"><div className="h-8 bg-gray-200 rounded w-16 inline-block"></div></td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
+        ) : (
+          rankings && rankings.length > 0 && (
+            <div className="mt-8 bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Program Rankings (Worst to Best)</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Program</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion Rate</th>
+                      <th className="px-4 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {rankings.map((r) => (
+                      <tr key={r.programId}>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{r.programCode} - {r.programName}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{r.totalStudents}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{r.completedStudents}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{(r.completionRate * 100).toFixed(1)}%</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-right">
+                          <button
+                            className="px-3 py-1 border rounded hover:bg-gray-50"
+                            onClick={() => navigate(`/superadmin/overview?programId=${r.programId}`)}
+                          >View</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         )}
       </main>
     </div>
