@@ -87,13 +87,8 @@ const AdminCategoriesSummary = () => {
             const name = row.category;
             if (!name) return;
             const qp = programId ? `?programId=${programId}` : '';
-            if (studentIdParam) {
-              // If a student is pre-selected, go straight to that student's courses for the category
-              navigate(`${basePath}/categories-summary/${encodeURIComponent(String(name))}/students/${encodeURIComponent(String(studentIdParam))}${qp}`);
-            } else {
-              // Otherwise, open the category students list
-              navigate(`${basePath}/categories-summary/${encodeURIComponent(String(name))}${qp}`);
-            }
+            // Directly open category completion view instead of the previous intermediate page
+            navigate(`${basePath}/categories-summary/${encodeURIComponent(String(name))}/completion${qp}`);
           }}
           cardTitleKey="category"
         />

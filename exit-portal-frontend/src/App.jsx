@@ -10,7 +10,7 @@ import AdminStudentDetails from './pages/admin/AdminStudentDetails';
 import AdminCategories from './pages/admin/AdminCategories';
 import AdminCategoryDetails from './pages/admin/AdminCategoryDetails';
 import AdminCategoriesSummary from './pages/admin/AdminCategoriesSummary';
-import AdminCategoryStudents from './pages/admin/AdminCategoryStudents';
+// AdminCategoryStudents removed: direct navigation goes to AdminCategoryCompletion
 import AdminStudentCategoryCourses from './pages/admin/AdminStudentCategoryCourses';
 import AdminCategoryCompletion from './pages/admin/AdminCategoryCompletion';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
@@ -64,7 +64,7 @@ function App() {
           <Route path='categories' element={<AdminCategories />} />
           <Route path='categories/:categoryName' element={<AdminCategoryDetails />} />
           <Route path='categories-summary' element={<AdminCategoriesSummary />} />
-          <Route path='categories-summary/:categoryName' element={<AdminCategoryStudents />} />
+          {/* Route removed: categories-summary/:categoryName -> replaced by direct completion view */}
           <Route path='categories-summary/:categoryName/completion' element={<AdminCategoryCompletion />} />
           <Route path='categories-summary/:categoryName/students/:studentId' element={<AdminStudentCategoryCourses />} />
           <Route path='courses' element={<AdminCourses />} />
@@ -93,7 +93,6 @@ function App() {
           <Route path='categories' element={<AdminCategories />} />
           <Route path='categories/:categoryName' element={<AdminCategoryDetails />} />
           <Route path='categories-summary' element={<AdminCategoriesSummary />} />
-          <Route path='categories-summary/:categoryName' element={<AdminCategoryStudents />} />
           <Route path='categories-summary/:categoryName/completion' element={<AdminCategoryCompletion />} />
           <Route path='categories-summary/:categoryName/students/:studentId' element={<AdminStudentCategoryCourses />} />
           <Route path='courses' element={<AdminCourses />} />
