@@ -13,15 +13,16 @@ const Breadcrumbs = ({ items = [] }) => {
           return (
             <li
               key={`${item.label}-${idx}`}
-              className={`inline-flex items-center ${isLast ? 'min-w-0 flex-1' : ''}`}
+              className={`inline-flex items-center min-w-0 ${isLast ? 'flex-1' : ''}`}
             >
               {idx > 0 && (
-                <FiChevronRight aria-hidden className="mx-1 text-gray-400" />
+                <FiChevronRight aria-hidden className="mx-1 text-gray-400 shrink-0" />
               )}
               {item.to && !isLast ? (
                 <Link
                   to={item.to}
-                  className="px-1 py-0.5 rounded hover:text-red-900 hover:bg-red-50 transition-colors"
+                  className="px-1 py-0.5 rounded hover:text-red-900 hover:bg-red-50 transition-colors truncate inline-block max-w-[25vw] sm:max-w-[20vw]"
+                  title={item.label}
                 >
                   {item.label}
                 </Link>
@@ -29,7 +30,7 @@ const Breadcrumbs = ({ items = [] }) => {
                 <span
                   aria-current={isLast ? 'page' : undefined}
                   title={item.label}
-                  className={`px-1 py-0.5 ${isLast ? 'text-brand-charcoal font-semibold truncate block max-w-[65vw] sm:max-w-none' : ''}`}
+                  className={`px-1 py-0.5 ${isLast ? 'text-brand-charcoal font-semibold truncate block max-w-[60vw] sm:max-w-none' : 'truncate inline-block max-w-[25vw] sm:max-w-[20vw]'}`}
                 >
                   {item.label}
                 </span>

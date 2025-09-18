@@ -115,6 +115,44 @@ public class StudentCategoryProgressService {
         return result;
     }
 
+    // New: Provide completion lists along with detailed metrics for incomplete students
+    public Map<String, Object> getCategoryCompletionListsWithDetails(Long programId, String categoryName) {
+        Map<String, Object> out = new HashMap<>();
+        List<StudentCategoryProgressRepository.MetProjection> completed = getStudentsWhoMetCategory(programId, categoryName);
+        List<StudentCategoryProgressRepository.MetProjection> incomplete = getStudentsWhoNotMetCategory(programId, categoryName);
+        out.put("completed", completed);
+        out.put("incomplete", incomplete);
+
+        List<StudentCategoryProgressRepository.IncompleteDetailProjection> details =
+                progressRepository.findIncompleteDetails(programId, categoryName);
+        Map<String, Map<String, Object>> byId = new HashMap<>();
+        for (StudentCategoryProgressRepository.IncompleteDetailProjection d : details) {
+            int minCourses = d.getMinRequiredCourses() == null ? 0 : d.getMinRequiredCourses();
+            double minCredits = d.getMinRequiredCredits() == null ? 0.0 : d.getMinRequiredCredits();
+            int completedCourses = d.getCompletedCourses() == null ? 0 : d.getCompletedCourses();
+            double completedCredits = d.getCompletedCredits() == null ? 0.0 : d.getCompletedCredits();
+            int registeredCourses = d.getRegisteredCourses() == null ? 0 : d.getRegisteredCourses();
+            double registeredCredits = d.getRegisteredCredits() == null ? 0.0 : d.getRegisteredCredits();
+
+            int missingCourses = Math.max(0, minCourses - completedCourses);
+            double missingCredits = Math.max(0.0, minCredits - completedCredits);
+
+            Map<String, Object> m = new HashMap<>();
+            m.put("minRequiredCourses", minCourses);
+            m.put("minRequiredCredits", minCredits);
+            m.put("completedCourses", completedCourses);
+            m.put("completedCredits", completedCredits);
+            m.put("registeredCourses", registeredCourses);
+            m.put("registeredCredits", registeredCredits);
+            m.put("missingCourses", missingCourses);
+            m.put("missingCredits", missingCredits);
+            m.put("studentName", d.getStudentName());
+            byId.put(d.getUniversityId(), m);
+        }
+        out.put("incompleteDetailsById", byId);
+        return out;
+    }
+
     // Helper: group rows by program code and enrich from ProgramCategoryRequirement
     private void enrichWithMinimumsGroupedByProgram(List<StudentCategoryProgress> rows) {
         if (rows == null || rows.isEmpty()) return;

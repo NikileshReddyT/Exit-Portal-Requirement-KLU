@@ -41,20 +41,70 @@ const Breadcrumbs = ({ location, user }) => {
   }
   
   if (breadcrumbs.length === 0) return null;
-  
+
+  const firstCrumb = breadcrumbs[0];
+  const lastCrumb = breadcrumbs[breadcrumbs.length - 1];
+  const hasMiddle = breadcrumbs.length > 2;
+
   return (
-    <nav className="flex items-center space-x-1 text-sm text-gray-500 mb-4">
-      {breadcrumbs.map((crumb, index) => (
-        <React.Fragment key={crumb.path}>
-          {index > 0 && <span className="mx-2">/</span>}
-          <NavLink 
-            to={crumb.path}
-            className="hover:text-gray-700 transition-colors"
-          >
-            {crumb.label}
+    <nav aria-label="Breadcrumb" className="w-full mb-4" role="navigation">
+      {/* Mobile (collapsed) */}
+      <ol
+        role="list"
+        className="sm:hidden flex items-center gap-1 text-sm text-gray-500 overflow-hidden min-w-0"
+      >
+        {/* First crumb */}
+        <li className="min-w-0">
+          <NavLink to={firstCrumb.path} className="hover:text-gray-700 transition-colors truncate inline-block max-w-[35vw]">
+            {firstCrumb.label}
           </NavLink>
-        </React.Fragment>
-      ))}
+        </li>
+        <li className="shrink-0 px-1">/</li>
+        {hasMiddle && (
+          <>
+            <li className="shrink-0 text-gray-400">…</li>
+            <li className="shrink-0 px-1">/</li>
+          </>
+        )}
+        {/* Last crumb */}
+        {firstCrumb !== lastCrumb && (
+          <li className="min-w-0 flex-1">
+            <span aria-current="page" className="truncate inline-block max-w-[60vw]" title={lastCrumb.label}>
+              {lastCrumb.label}
+            </span>
+          </li>
+        )}
+      </ol>
+
+      {/* Desktop (full, truncated) */}
+      <ol
+        role="list"
+        className="hidden sm:flex items-center gap-1 text-sm text-gray-500 overflow-hidden min-w-0"
+      >
+        {breadcrumbs.map((crumb, index) => {
+          const isLast = index === breadcrumbs.length - 1;
+          return (
+            <React.Fragment key={crumb.path}>
+              {index > 0 && <li className="shrink-0 px-1">/</li>}
+              <li className={`inline-flex items-center min-w-0 ${isLast ? 'flex-1' : ''}`}>
+                {isLast ? (
+                  <span aria-current="page" className="truncate inline-block max-w-[40vw]" title={crumb.label}>
+                    {crumb.label}
+                  </span>
+                ) : (
+                  <NavLink
+                    to={crumb.path}
+                    className="hover:text-gray-700 transition-colors truncate inline-block max-w-[20vw]"
+                    title={crumb.label}
+                  >
+                    {crumb.label}
+                  </NavLink>
+                )}
+              </li>
+            </React.Fragment>
+          );
+        })}
+      </ol>
     </nav>
   );
 };

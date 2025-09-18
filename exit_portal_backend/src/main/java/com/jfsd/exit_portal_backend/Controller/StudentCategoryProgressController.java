@@ -55,12 +55,19 @@ public class StudentCategoryProgressController {
     }
 
     // Completed vs Incomplete students for a category (optional program scope via programId)
+    // If details=true, also include per-student metrics for incomplete students (missing/registered)
     @GetMapping("/category/completion")
-    public ResponseEntity<Map<String, List<StudentCategoryProgressRepository.MetProjection>>> getCategoryCompletion(
+    public ResponseEntity<Map<String, ?>> getCategoryCompletion(
             @RequestParam("categoryName") String categoryName,
-            @RequestParam(value = "programId", required = false) Long programId
+            @RequestParam(value = "programId", required = false) Long programId,
+            @RequestParam(value = "details", required = false, defaultValue = "false") boolean details
     ) {
-        Map<String, List<StudentCategoryProgressRepository.MetProjection>> result = progressService.getCategoryCompletionLists(programId, categoryName);
-        return ResponseEntity.ok(result);
+        if (details) {
+            Map<String, Object> result = progressService.getCategoryCompletionListsWithDetails(programId, categoryName);
+            return ResponseEntity.ok(result);
+        } else {
+            Map<String, List<StudentCategoryProgressRepository.MetProjection>> result = progressService.getCategoryCompletionLists(programId, categoryName);
+            return ResponseEntity.ok(result);
+        }
     }
 }

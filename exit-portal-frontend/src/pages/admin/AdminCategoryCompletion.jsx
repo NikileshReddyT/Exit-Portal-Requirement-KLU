@@ -21,6 +21,9 @@ const AdminCategoryCompletion = () => {
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState([]);
   const [incomplete, setIncomplete] = useState([]);
+  const [incompleteDetailsById, setIncompleteDetailsById] = useState({});
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailStudent, setDetailStudent] = useState(null); // { id, name, metrics }
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('id'); // 'id' | 'name'
 
@@ -37,7 +40,7 @@ const AdminCategoryCompletion = () => {
       try {
         setLoading(true);
         setError('');
-        let url = `${config.backendUrl}/api/progress/category/completion?categoryName=${encodeURIComponent(categoryName)}`;
+        let url = `${config.backendUrl}/api/progress/category/completion?categoryName=${encodeURIComponent(categoryName)}&details=true`;
         const effectiveProgramId = (user?.userType === 'SUPER_ADMIN' ? programId : user?.programId) || null;
         if (effectiveProgramId) url += `&programId=${encodeURIComponent(String(effectiveProgramId))}`;
         const res = await axios.get(url, { withCredentials: true });
@@ -45,6 +48,7 @@ const AdminCategoryCompletion = () => {
         const payload = res.data || {};
         setCompleted(Array.isArray(payload.completed) ? payload.completed : []);
         setIncomplete(Array.isArray(payload.incomplete) ? payload.incomplete : []);
+        setIncompleteDetailsById(payload.incompleteDetailsById || {});
       } catch (e) {
         if (!cancelled) setError('Failed to load category completion');
       } finally {
@@ -78,6 +82,30 @@ const AdminCategoryCompletion = () => {
     const effectiveProgramId = (user?.userType === 'SUPER_ADMIN' ? programId : user?.programId) || null;
     if (effectiveProgramId) qp.set('programId', String(effectiveProgramId));
     navigate(`${basePath}/students?${qp.toString()}`);
+  };
+
+  const openDetails = (student) => {
+    const d = incompleteDetailsById[student.universityId] || {};
+    setDetailStudent({
+      id: student.universityId,
+      name: student.studentName,
+      metrics: {
+        minRequiredCourses: d.minRequiredCourses ?? 0,
+        minRequiredCredits: d.minRequiredCredits ?? 0,
+        completedCourses: d.completedCourses ?? 0,
+        completedCredits: d.completedCredits ?? 0,
+        missingCourses: d.missingCourses ?? 0,
+        missingCredits: d.missingCredits ?? 0,
+        registeredCourses: d.registeredCourses ?? 0,
+        registeredCredits: d.registeredCredits ?? 0,
+      }
+    });
+    setDetailOpen(true);
+  };
+
+  const closeDetails = () => {
+    setDetailOpen(false);
+    setDetailStudent(null);
   };
 
   return (
@@ -170,7 +198,8 @@ const AdminCategoryCompletion = () => {
               </div>
               <div className="max-h-[70vh] overflow-auto">
                 <div className="divide-y divide-gray-200">
-                  {incompleteView.map((s, i) => (
+                  {incompleteView.map((s, i) => {
+                    return (
                     <button
                       key={`i-${i}`}
                       className="btn w-full text-left text-sm leading-tight px-4 py-3 flex items-center justify-between gap-3 hover:bg-red-50 focus-visible:outline-none odd:bg-white even:bg-red-50/30"
@@ -180,9 +209,16 @@ const AdminCategoryCompletion = () => {
                         <div className="font-mono tabular-nums font-semibold text-gray-900" title={s.universityId}>{s.universityId}</div>
                         <div className="text-gray-700 text-xs sm:text-sm truncate" title={s.studentName}>{s.studentName}</div>
                       </div>
-                      <FiChevronRight className="text-red-700 flex-shrink-0" />
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="px-2 py-1 text-xs border rounded bg-white hover:bg-gray-50"
+                          onClick={(e) => { e.stopPropagation(); openDetails(s); }}
+                        >Details</button>
+                        <FiChevronRight className="text-red-700 flex-shrink-0" />
+                      </div>
                     </button>
-                  ))}
+                    );
+                  })}
                   {incompleteView.length === 0 && (
                     <div className="px-4 py-8 text-xs text-gray-500">No students</div>
                   )}
@@ -192,6 +228,74 @@ const AdminCategoryCompletion = () => {
           </div>
         )}
       </div>
+      {detailOpen && detailStudent && (
+        <div className="fixed inset-0 z-50">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40" onClick={closeDetails} />
+          {/* Modal */}
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-xl border">
+              <div className="p-4 sm:p-5 border-b flex items-center justify-between">
+                <div>
+                  <div className="text-xs uppercase text-gray-500">Student</div>
+                  <div className="font-semibold text-gray-900">
+                    <span className="font-mono mr-2">{detailStudent.id}</span>
+                    <span className="text-gray-700">{detailStudent.name}</span>
+                  </div>
+                </div>
+                <button onClick={closeDetails} className="px-3 py-1 text-sm border rounded hover:bg-gray-50">Close</button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="border rounded-lg p-4 bg-gray-50">
+                    <div className="text-xs uppercase text-gray-500 mb-1">Required</div>
+                    <div className="text-sm text-gray-800">
+                      Courses: <span className="font-semibold">{detailStudent.metrics.minRequiredCourses}</span>
+                    </div>
+                    <div className="text-sm text-gray-800">
+                      Credits: <span className="font-semibold">{Number(detailStudent.metrics.minRequiredCredits).toFixed(1)}</span>
+                    </div>
+                  </div>
+                  <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+                    <div className="text-xs uppercase text-green-700 mb-1">Completed</div>
+                    <div className="text-sm text-green-900">
+                      Courses: <span className="font-semibold">{detailStudent.metrics.completedCourses}</span>
+                    </div>
+                    <div className="text-sm text-green-900">
+                      Credits: <span className="font-semibold">{Number(detailStudent.metrics.completedCredits).toFixed(1)}</span>
+                    </div>
+                  </div>
+                  <div className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                    <div className="text-xs uppercase text-amber-700 mb-1">Missing</div>
+                    <div className="text-sm text-amber-900">
+                      Courses: <span className="font-semibold">{detailStudent.metrics.missingCourses}</span>
+                    </div>
+                    <div className="text-sm text-amber-900">
+                      Credits: <span className="font-semibold">{Number(detailStudent.metrics.missingCredits).toFixed(1)}</span>
+                    </div>
+                  </div>
+                  <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
+                    <div className="text-xs uppercase text-blue-700 mb-1">Registered</div>
+                    <div className="text-sm text-blue-900">
+                      Courses: <span className="font-semibold">{detailStudent.metrics.registeredCourses}</span>
+                    </div>
+                    <div className="text-sm text-blue-900">
+                      Credits: <span className="font-semibold">{Number(detailStudent.metrics.registeredCredits).toFixed(1)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 sm:p-5 border-t flex items-center justify-end gap-2">
+                <button onClick={closeDetails} className="px-4 py-2 border rounded hover:bg-gray-50">Close</button>
+                <button
+                  onClick={() => { const id = detailStudent.id; closeDetails(); goToStudent(id); }}
+                  className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-800"
+                >View Student</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

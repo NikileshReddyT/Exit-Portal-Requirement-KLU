@@ -129,6 +129,44 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
         String getStudentName();
     }
 
+    // Detailed projection for incomplete students with minimums, completed, and registered metrics
+    interface IncompleteDetailProjection {
+        String getUniversityId();
+        String getStudentName();
+        Integer getMinRequiredCourses();
+        Double getMinRequiredCredits();
+        Integer getCompletedCourses();
+        Double getCompletedCredits();
+        Integer getRegisteredCourses();
+        Double getRegisteredCredits();
+    }
+
+    @Query(value = "SELECT "+
+            "  scp.university_id AS universityId,\n" +
+            "  scp.student_name AS studentName,\n" +
+            "  COALESCE(scp.min_required_courses, 0) AS minRequiredCourses,\n" +
+            "  COALESCE(scp.min_required_credits, 0) AS minRequiredCredits,\n" +
+            "  COALESCE(scp.completed_courses, 0) AS completedCourses,\n" +
+            "  COALESCE(scp.completed_credits, 0) AS completedCredits,\n" +
+            "  COALESCE(reg.registered_courses, 0) AS registeredCourses,\n" +
+            "  COALESCE(reg.registered_credits, 0) AS registeredCredits\n" +
+            "FROM student_category_progress scp\n" +
+            "LEFT JOIN (\n" +
+            "  SELECT sg.university_id, pcc.category_id, COUNT(*) AS registered_courses, SUM(co.course_credits) AS registered_credits\n" +
+            "  FROM student_grades sg\n" +
+            "  JOIN courses co ON co.course_id = sg.course_id\n" +
+            "  JOIN program_course_category pcc ON pcc.course_id = co.course_id\n" +
+            "  JOIN students st2 ON st2.student_id = sg.university_id\n" +
+            "  WHERE sg.promotion = 'R' AND pcc.program_id = st2.program_id\n" +
+            "  GROUP BY sg.university_id, pcc.category_id\n" +
+            ") reg ON reg.university_id = scp.university_id AND reg.category_id = scp.category_id\n" +
+            "WHERE scp.category_name = :categoryName\n" +
+            "  AND (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  AND ( (COALESCE(scp.min_required_courses,0) > 0 AND COALESCE(scp.completed_courses,0) < scp.min_required_courses)\n" +
+            "        OR (COALESCE(scp.min_required_credits,0) > 0 AND COALESCE(scp.completed_credits,0) < scp.min_required_credits) )\n" +
+            "GROUP BY scp.university_id, scp.student_name, scp.min_required_courses, scp.min_required_credits, scp.completed_courses, scp.completed_credits, reg.registered_courses, reg.registered_credits",
+            nativeQuery = true)
+    List<IncompleteDetailProjection> findIncompleteDetails(@Param("programId") Long programId, @Param("categoryName") String categoryName);
     // Students who did NOT meet a given category (optionally scoped by program)
     @Query(value = "SELECT scp.university_id AS universityId, scp.student_name AS studentName\n" +
             "FROM student_category_progress scp\n" +
