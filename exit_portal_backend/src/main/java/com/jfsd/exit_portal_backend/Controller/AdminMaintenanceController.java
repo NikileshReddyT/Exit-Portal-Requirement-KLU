@@ -5,6 +5,7 @@ import com.jfsd.exit_portal_backend.security.JwtUtil;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +22,9 @@ public class AdminMaintenanceController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private CacheManager cacheManager;
 
     /**
      * Destructive: Deletes all data for a program.
@@ -62,6 +66,10 @@ public class AdminMaintenanceController {
                 message = adminMaintenanceService.deleteProgramCascade(programCode, programName);
             } else {
                 return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+            }
+            // Evict admin insights cache so dashboards refresh immediately after deletion
+            if (cacheManager != null && cacheManager.getCache("admin_api") != null) {
+                cacheManager.getCache("admin_api").clear();
             }
             Map<String, Object> response = new HashMap<>();
             response.put("status", "success");

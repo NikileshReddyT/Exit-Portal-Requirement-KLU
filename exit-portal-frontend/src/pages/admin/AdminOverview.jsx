@@ -5,7 +5,7 @@ import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { FiTrendingDown, FiUsers, FiAlertTriangle, FiAward, FiTarget, FiChevronDown } from 'react-icons/fi';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Cell } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Legend } from 'recharts';
 
 // Reusable quick link button
 const QuickLink = ({ to, label, onClick }) => (
@@ -14,13 +14,11 @@ const QuickLink = ({ to, label, onClick }) => (
   </button>
 );
 
-// Responsive horizontal bar chart for category met rate (0-100%)
-// Dark neon style with rounded bars and glow
+// Professional, easy-to-read horizontal bar chart (0-100%)
 const CategoryPerformanceChart = ({ data = [], onBarClick = () => {} }) => {
   const sorted = [...data]
-    .map((c) => ({ name: c.category, value: Math.round(Math.max(0, Math.min(1, c.metRate ?? 0)) * 100), rate: c.metRate ?? 0 }))
+    .map((c) => ({ name: c.category, value: Math.round(Math.max(0, Math.min(1, c.metRate ?? 0)) * 100) }))
     .sort((a, b) => b.value - a.value);
-  const neon = (r) => `hsl(${Math.max(0, Math.min(130, Math.round(r * 130)))}, 95%, 55%)`;
   const tf = (s) => (s && s.length > 26 ? `${s.slice(0, 26)}…` : s);
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -29,90 +27,78 @@ const CategoryPerformanceChart = ({ data = [], onBarClick = () => {} }) => {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  const rowH = isMobile ? 22 : 24;
-  const innerHeight = Math.max(200, Math.min(900, sorted.length * rowH + 60));
-
-  const NeonBar = (props) => {
-    const { x, y, width, height, fill, ...rest } = props;
-    const w = Math.max(0, width);
-    return (
-      <g>
-        {/* Forward event handlers like onClick so bars are clickable even with custom shape */}
-        <rect
-          x={x}
-          y={y}
-          width={w}
-          height={height}
-          rx={9}
-          ry={9}
-          fill={fill}
-          filter="url(#glow)"
-          style={{ cursor: 'pointer' }}
-          {...rest}
-        />
-      </g>
-    );
-  };
+  const rowH = isMobile ? 24 : 26;
+  const innerHeight = Math.max(220, Math.min(900, sorted.length * rowH + 64));
 
   return (
     <div className="w-full">
       <div style={{ height: innerHeight, minWidth: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sorted} layout="vertical" margin={{ top: 12, right: (isMobile ? 56 : 72), bottom: 12, left: 12 }} barSize={isMobile ? 5 : 6}>
-            <defs>
-              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="4.5" result="coloredBlur" />
-                <feMerge>
-                  <feMergeNode in="coloredBlur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
+          <BarChart data={sorted} layout="vertical" margin={{ top: 12, right: (isMobile ? 64 : 84), bottom: 12, left: 12 }} barSize={isMobile ? 10 : 12}>
             <CartesianGrid horizontal={false} stroke="rgba(15,23,42,0.06)" />
-            <XAxis
-              type="number"
-              domain={[0, 100]}
-              tickFormatter={(v) => `${v}%`}
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#334155', fontSize: 12 }}
-            />
-            <YAxis
-              type="category"
-              dataKey="name"
-              width={isMobile ? 140 : 220}
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#334155', fontSize: isMobile ? 11 : 12 }}
-              tickFormatter={tf}
-            />
+            <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} tick={{ fill: '#334155', fontSize: 12 }} />
+            <YAxis type="category" dataKey="name" width={isMobile ? 170 : 260} axisLine={false} tickLine={false} tick={{ fill: '#334155', fontSize: isMobile ? 11 : 12 }} tickFormatter={tf} />
+            <Tooltip formatter={(v) => [`${v}%`, 'Met rate']} cursor={{ fill: 'rgba(2,6,23,0.04)' }} contentStyle={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, color: '#0f172a' }} labelStyle={{ color: '#334155' }} itemStyle={{ color: '#0f172a' }} />
+            <Bar dataKey="value" name="Met rate" fill="#16a34a" background={{ fill: '#f1f5f9', radius: [8, 8, 8, 8] }} radius={[8, 8, 8, 8]}
+              onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}>
+              <LabelList dataKey="value" position="right" offset={isMobile ? 4 : 8} formatter={(v) => `${v}%`} fill="#0f172a" fontSize={isMobile ? 10 : 11} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+// Stacked bar chart showing actual vs additional projected met rate
+const CategoryPerformanceStackedChart = ({ data = [], onBarClick = () => {} }) => {
+  const sorted = [...data]
+    .map((c) => {
+      const rateA = Math.max(0, Math.min(1, c.metRateActual ?? 0));
+      const rateP = Math.max(0, Math.min(1, c.metRateProjected ?? 0));
+      const add = Math.max(0, rateP - rateA);
+      return {
+        name: c.category,
+        actual: Math.round(rateA * 100),
+        projectedExtra: Math.round(add * 100),
+      };
+    })
+    .sort((a, b) => (b.actual + b.projectedExtra) - (a.actual + a.projectedExtra));
+  const tf = (s) => (s && s.length > 26 ? `${s.slice(0, 26)}…` : s);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const rowH = isMobile ? 24 : 26;
+  const innerHeight = Math.max(220, Math.min(900, sorted.length * rowH + 64));
+
+  return (
+    <div className="w-full">
+      <div style={{ height: innerHeight, minWidth: 280 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={sorted} layout="vertical" margin={{ top: 12, right: (isMobile ? 64 : 84), bottom: 12, left: 12 }} barSize={isMobile ? 10 : 12}>
+            <CartesianGrid horizontal={false} stroke="rgba(15,23,42,0.06)" />
+            <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} tick={{ fill: '#334155', fontSize: 12 }} />
+            <YAxis type="category" dataKey="name" width={isMobile ? 170 : 260} axisLine={false} tickLine={false} tick={{ fill: '#334155', fontSize: isMobile ? 11 : 12 }} tickFormatter={tf} />
             <Tooltip
-              formatter={(v) => [`${v}%`, 'Met rate']}
-              cursor={{ fill: 'rgba(239, 68, 68, 0.08)' }}
-              contentStyle={{ background: '#ffffff', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, color: '#0f172a' }}
+              formatter={(value, name) => {
+                const label = name === 'Actual' ? 'Actual met' : 'Projected gain';
+                return [`${value}%`, label];
+              }}
+              cursor={{ fill: 'rgba(2,6,23,0.04)' }}
+              contentStyle={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 12, color: '#0f172a' }}
               labelStyle={{ color: '#334155' }}
               itemStyle={{ color: '#0f172a' }}
             />
-            <Bar
-              dataKey="value"
-              shape={<NeonBar />}
-              background={{ fill: 'rgba(148,163,184,0.15)', radius: [9, 9, 9, 9] }}
-              onClick={(data, index) => {
-                const name = data && data.payload && data.payload.name
-                  ? data.payload.name
-                  : (Array.isArray(sorted) && sorted[index] ? sorted[index].name : undefined);
-                if (name) onBarClick(name);
-              }}
-            >
-              {sorted.map((entry, idx) => (
-                <Cell
-                  key={`cell-${idx}`}
-                  fill={neon(entry.rate)}
-                  onClick={() => onBarClick(entry.name)}
-                  cursor="pointer"
-                />
-              ))}
-              <LabelList dataKey="value" position="right" offset={isMobile ? 4 : 8} formatter={(v) => `${v}%`} fill="#334155" fontSize={isMobile ? 10 : 11} />
+            <Legend iconType="circle" verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: 8 }} />
+            <Bar name="Actual" stackId="a" dataKey="actual" fill="#16a34a" radius={[9, 0, 0, 9]} onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}>
+              <LabelList dataKey="actual" position="insideRight" offset={6} formatter={(v) => v > 0 ? `${v}%` : ''} fill="#052e16" fontSize={isMobile ? 10 : 11} />
+            </Bar>
+            <Bar name="Projected" stackId="a" dataKey="projectedExtra" fill="#2563eb" radius={[0, 9, 9, 0]} onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}>
+              <LabelList dataKey="projectedExtra" position="right" offset={isMobile ? 4 : 8} formatter={(v) => v > 0 ? `+${v}%` : ''} fill="#1e3a8a" fontSize={isMobile ? 10 : 11} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -134,11 +120,16 @@ const AdminOverview = () => {
     courseLeaderboard: null,
   });
   const [showCat, setShowCat] = useState(false);
+  const [projection, setProjection] = useState(false);
+  const [catProjected, setCatProjected] = useState([]);
   
   // Use program context or URL params
   const urlParams = new URLSearchParams(location.search);
   const urlProgramId = urlParams.get('programId');
-  const programId = selectedProgramId || urlProgramId;
+  // For ADMIN, ignore ProgramContext selections and force their assigned programId
+  const programId = (user?.userType === 'ADMIN' && user?.programId)
+    ? String(user.programId)
+    : (selectedProgramId || urlProgramId);
   const urlProgramCode = urlParams.get('programCode');
   const programCode = programInfo?.code || urlProgramCode || null;
 
@@ -151,7 +142,10 @@ const AdminOverview = () => {
   const handleCategoryBarClick = (categoryName) => {
     const base = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
     const effectiveProgramId = getEffectiveProgramId();
-    const qp = effectiveProgramId ? `?programId=${encodeURIComponent(effectiveProgramId)}` : '';
+    const params = new URLSearchParams();
+    if (effectiveProgramId) params.set('programId', String(effectiveProgramId));
+    if (projection) params.set('project', 'true');
+    const qp = params.toString() ? `?${params.toString()}` : '';
     navigate(`${base}/categories-summary/${encodeURIComponent(categoryName)}/completion${qp}`);
   };
 
@@ -178,8 +172,11 @@ const AdminOverview = () => {
         } else if (user?.userType === 'ADMIN' && user?.programId) {
           effectiveProgramId = user.programId;
         }
+        console.log(programInfo,programId,user,"data")
         
         if (effectiveProgramId) {
+          console.log('Effective Program ID:', effectiveProgramId);
+  
           apiUrl += `?programId=${effectiveProgramId}`;
         }
         
@@ -219,6 +216,31 @@ const AdminOverview = () => {
     };
   }, [user, programId]);
 
+  // Load projected category summaries lazily when chart is opened and projection is enabled
+  useEffect(() => {
+    let cancelled = false;
+    const loadProjected = async () => {
+      try {
+        if (!projection || !showCat) return;
+        const effectiveProgramId = getEffectiveProgramId();
+        let url = `${config.backendUrl}/api/v1/admin/overview/categories/projected`;
+        if (effectiveProgramId) url += `?programId=${encodeURIComponent(String(effectiveProgramId))}`;
+        const res = await axios.get(url, { withCredentials: true });
+        if (cancelled) return;
+        const arr = Array.isArray(res.data) ? res.data : [];
+        setCatProjected(arr);
+      } catch (e) {
+        if (!cancelled) {
+          // Non-critical; fallback to normal summaries
+          setCatProjected([]);
+        }
+      }
+    };
+    loadProjected();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projection, showCat, user, programId]);
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -240,7 +262,8 @@ const AdminOverview = () => {
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
   const totalStudents = data?.stats?.totalStudents ?? 0;
   const catSummaries = Array.isArray(data?.categorySummaries) ? data.categorySummaries : [];
-  const headerProgramCode = programInfo?.code || data?.programCode || null;
+  // Prefer backend-resolved programCode; for ADMIN fall back to user's programCode; use ProgramContext last (SUPER_ADMIN)
+  const headerProgramCode = data?.programCode || (user?.userType === 'ADMIN' ? user?.programCode : null) || programInfo?.code || null;
   // Stats display (fallback to provided snapshot when API not available)
   const statsDisplay = {
     totalStudents: data?.stats?.totalStudents ?? 293,
@@ -290,32 +313,41 @@ const AdminOverview = () => {
 
       {/* Category Completion (Met rate by category) */}
       {catSummaries.length > 0 && (
-        <div className="bg-red-50 rounded-lg shadow p-4 sm:p-6 border border-red-100">
-          <div
-            className="flex items-center justify-between mb-2 sm:mb-4 cursor-pointer select-none"
-            onClick={() => setShowCat((v) => !v)}
-            aria-expanded={showCat}
-            role="button"
-          >
+        <div
+          className="bg-red-50 rounded-lg shadow p-4 sm:p-6 border border-red-100 cursor-pointer"
+          onClick={() => setShowCat(true)}
+          role="button"
+          aria-expanded={showCat}
+        >
+          <div className="flex items-center justify-between mb-2 sm:mb-4 select-none">
             <div className="flex items-center gap-2">
               <FiAward className="h-5 w-5 text-red-600" />
               <h3 className="text-lg font-semibold text-red-900">Category Completion</h3>
             </div>
-            <div className="flex items-center gap-2 text-red-700">
-              <span className="hidden sm:inline text-xs">
-                {showCat ? 'Hide' : 'Click to view category completion rates'}
-              </span>
+            <div className="flex items-center gap-3 text-red-700" onClick={(e) => e.stopPropagation()}>
+              <label className="inline-flex items-center gap-2 text-xs bg-white border border-red-200 text-red-800 rounded px-2 py-1">
+                <input type="checkbox" checked={projection} onChange={(e) => setProjection(e.target.checked)} />
+                Projection Mode
+              </label>
+              {!showCat && (
+                <span className="hidden sm:inline text-xs">Click anywhere to open chart</span>
+              )}
               <FiChevronDown className={`h-5 w-5 transition-transform ${showCat ? 'rotate-180' : ''}`} />
             </div>
           </div>
           {!showCat && (
             <div className="text-xs sm:text-sm text-red-700/80 bg-red-100/60 border border-red-200 rounded-md px-3 py-2 text-center">
-              Click to view category completion rates
+              Click anywhere in this card to open the chart
             </div>
           )}
           {showCat && (
-            <div className="mt-3 sm:mt-4">
-              <CategoryPerformanceChart data={catSummaries} onBarClick={handleCategoryBarClick} />
+            <div className="mt-3 sm:mt-4" onClick={(e) => e.stopPropagation()}>
+              {!projection && (
+                <CategoryPerformanceChart data={catSummaries} onBarClick={handleCategoryBarClick} />
+              )}
+              {projection && (
+                <CategoryPerformanceStackedChart data={catProjected} onBarClick={handleCategoryBarClick} />
+              )}
             </div>
           )}
         </div>

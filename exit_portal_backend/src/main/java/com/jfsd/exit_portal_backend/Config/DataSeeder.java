@@ -23,7 +23,7 @@ public class DataSeeder implements CommandLineRunner {
             AdminUser superAdmin = new AdminUser();
             superAdmin.setUsername("nikilesh");
             superAdmin.setName("Nikilesh Reddy T");
-            superAdmin.setPassword(passwordEncoder.encode("Nikilesh@2005"));
+            superAdmin.setPassword(passwordEncoder.encode("Nikilesh"));
             superAdmin.setRole(AdminUser.Role.SUPER_ADMIN);
             superAdmin.setProgram(null); // Super admin not tied to any program
             superAdmin.setEnabled(true);

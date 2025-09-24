@@ -1,6 +1,6 @@
 package com.jfsd.exit_portal_backend.Controller;
 
-import com.jfsd.exit_portal_backend.RequestBodies.PasswordResetRequest;
+import com.jfsd.exit_portal_backend.dto.PasswordResetRequest;
 import com.jfsd.exit_portal_backend.Service.PasswordResetService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

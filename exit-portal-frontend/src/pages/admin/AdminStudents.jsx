@@ -44,7 +44,7 @@ const AdminStudents = () => {
       const p = new URLSearchParams(prev);
       if (query) p.set('q', query); else p.delete('q');
       return p;
-    });
+    }, { replace: true });
   }, [query, setSearchParams]);
 
   // If page opened with ?studentId=..., preselect that student (and optionally hydrate name via search API)

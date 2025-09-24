@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import config from '../config';
+import { useAuth } from './AuthContext';
 
 const ProgramContext = createContext();
 
@@ -24,9 +25,12 @@ export const ProgramProvider = ({ children }) => {
     }
   });
   const location = useLocation();
+  const { user } = useAuth();
 
   // Consolidated effect to manage program context from URL and session storage
   useEffect(() => {
+    // For ADMIN users, ignore URL-based selection entirely; their scope is fixed to their assigned program.
+    if (user?.userType === 'ADMIN') return;
     const urlParams = new URLSearchParams(location.search);
     const urlProgramCode = urlParams.get('programCode');
     const urlProgramId = urlParams.get('programId');
@@ -48,7 +52,39 @@ export const ProgramProvider = ({ children }) => {
         sessionStorage.setItem('programInfo', JSON.stringify(updated));
       }
     }
-  }, [location.search, selectedProgramId, programInfo]);
+  }, [location.search, selectedProgramId, programInfo, user]);
+
+  // Keep ProgramContext synchronized with the authenticated user
+  useEffect(() => {
+    // If no user (logged out) or not admin/super-admin, clear the program context
+    if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
+      setSelectedProgramId(null);
+      setProgramInfo(null);
+      sessionStorage.removeItem('selectedProgramId');
+      sessionStorage.removeItem('programInfo');
+      return;
+    }
+
+    // For ADMIN: force program to the user's assigned program
+    if (user.userType === 'ADMIN') {
+      const adminPid = user.programId ? String(user.programId) : null;
+      if (adminPid && adminPid !== selectedProgramId) {
+        setSelectedProgramId(adminPid);
+        sessionStorage.setItem('selectedProgramId', adminPid);
+      }
+      const desiredInfo = {
+        programId: user.programId ?? null,
+        code: user.programCode ?? (programInfo?.code || null),
+        name: user.programName ?? (programInfo?.name || null),
+      };
+      // Only update if changed to avoid re-renders
+      if (JSON.stringify(desiredInfo) !== JSON.stringify(programInfo)) {
+        setProgramInfo(desiredInfo);
+        sessionStorage.setItem('programInfo', JSON.stringify(desiredInfo));
+      }
+    }
+    // For SUPER_ADMIN: no action here; URL-based effect manages selection
+  }, [user]);
 
   // Lazy hydrate programInfo from backend when we know selectedProgramId but don't yet have info
   useEffect(() => {

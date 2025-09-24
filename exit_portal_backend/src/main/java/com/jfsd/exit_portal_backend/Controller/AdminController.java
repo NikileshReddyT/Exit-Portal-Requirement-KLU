@@ -6,7 +6,7 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import com.jfsd.exit_portal_backend.RequestBodies.Admin;
+import com.jfsd.exit_portal_backend.dto.Admin;
 
 @RestController
 @RequestMapping("/admin")

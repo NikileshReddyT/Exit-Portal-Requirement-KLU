@@ -46,7 +46,7 @@ export default function AdminDangerZone() {
         if (targetCode) body.programCode = targetCode;
         if (!targetCode && targetName) body.programName = targetName;
       }
-      const res = await axios.delete(`${config.backendUrl}/api/v1/admin/maintenance/program`, { data: body });
+      const res = await axios.delete(`${config.backendUrl}/api/v1/admin/maintenance/program`, { data: body, withCredentials: true });
       setResult(res.data?.message || 'Program deleted successfully.');
     } catch (e) {
       const msg = e?.response?.data?.error || e?.message || 'Deletion failed';

@@ -5,6 +5,7 @@ import com.jfsd.exit_portal_backend.Service.AdminInsightsService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,9 @@ public class AdminInsightsController {
 
     @Autowired
     private AdminInsightsService adminInsightsService;
+
+    @Autowired
+    private CacheManager cacheManager;
 
     @GetMapping("/dashboard")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
@@ -51,6 +55,16 @@ public class AdminInsightsController {
         dashboardData.put("message", "Welcome to " + userType + " dashboard!");
 
         return ResponseEntity.ok(dashboardData);
+    }
+
+    // SUPER_ADMIN: clear admin cache when data changes outside normal upload endpoints
+    @PostMapping("/cache/clear")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> clearAdminCache() {
+        if (cacheManager != null && cacheManager.getCache("admin_api") != null) {
+            cacheManager.getCache("admin_api").clear();
+        }
+        return ResponseEntity.ok(Map.of("status", "cleared"));
     }
 
     @GetMapping("/me")
@@ -156,6 +170,22 @@ public class AdminInsightsController {
         Long userProgramId = jwtUtil.getProgramIdFromJwtToken(jwt);
         Long effectiveProgramId = "SUPER_ADMIN".equals(userType) ? requestProgramId : userProgramId;
         return ResponseEntity.ok(adminInsightsService.getCoursePassLeaderboard(effectiveProgramId, Math.max(1, limit)));
+    }
+
+    // Projected category summaries: treat registered as completed for met-rate visualization
+    @GetMapping("/overview/categories/projected")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<List<Map<String, Object>>> getProjectedCategorySummaries(
+            @RequestParam(value = "programId", required = false) Long requestProgramId,
+            HttpServletRequest request) {
+        String jwt = getJwtFromRequest(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(List.of());
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        Long userProgramId = jwtUtil.getProgramIdFromJwtToken(jwt);
+        Long effectiveProgramId = "SUPER_ADMIN".equals(userType) ? requestProgramId : userProgramId;
+        return ResponseEntity.ok(adminInsightsService.listCategorySummariesProjected(effectiveProgramId));
     }
 
     // ===== Data Explorer Endpoints =====
