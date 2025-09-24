@@ -60,7 +60,7 @@ const Home = () => {
                 title="KL University Exit Portal"
                 description="KL University Exit Portal: Track student progress, manage categories and courses, upload results, and view analytics for exit requirements."
                 canonicalPath="/"
-                image="/vite.svg"
+                image="/kllogo.svg"
             />
             <div 
                 className="fixed inset-0 z-10 h-screen w-screen"
