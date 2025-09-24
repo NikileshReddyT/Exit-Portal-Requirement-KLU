@@ -1,4 +1,4 @@
-package com.jfsd.exit_portal_backend.RequestBodies;
+package com.jfsd.exit_portal_backend.dto;
 
 public class CreateAdminRequest {
     private String username;

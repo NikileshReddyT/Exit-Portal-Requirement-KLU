@@ -16,6 +16,11 @@ import java.util.HashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.jfsd.exit_portal_backend.dto.category.CompletedStudentDetailDTO;
+import com.jfsd.exit_portal_backend.dto.category.IncompleteStudentDetailDTO;
+import com.jfsd.exit_portal_backend.dto.category.StudentSummaryDTO;
+import com.jfsd.exit_portal_backend.dto.category.CategoryCompletionDetailsDTO;
+
 @Service
 public class StudentCategoryProgressService {
 
@@ -115,41 +120,162 @@ public class StudentCategoryProgressService {
         return result;
     }
 
-    // New: Provide completion lists along with detailed metrics for incomplete students
-    public Map<String, Object> getCategoryCompletionListsWithDetails(Long programId, String categoryName) {
-        Map<String, Object> out = new HashMap<>();
-        List<StudentCategoryProgressRepository.MetProjection> completed = getStudentsWhoMetCategory(programId, categoryName);
-        List<StudentCategoryProgressRepository.MetProjection> incomplete = getStudentsWhoNotMetCategory(programId, categoryName);
-        out.put("completed", completed);
-        out.put("incomplete", incomplete);
+    // New: Provide completion lists along with detailed metrics for incomplete and completed students
+    public CategoryCompletionDetailsDTO getCategoryCompletionListsWithDetails(Long programId, String categoryName) {
+        // Summaries
+        List<StudentSummaryDTO> completedSummaries = getStudentsWhoMetCategory(programId, categoryName)
+                .stream()
+                .map(p -> new StudentSummaryDTO(p.getUniversityId(), p.getStudentName()))
+                .collect(Collectors.toList());
+        List<StudentSummaryDTO> incompleteSummaries = getStudentsWhoNotMetCategory(programId, categoryName)
+                .stream()
+                .map(p -> new StudentSummaryDTO(p.getUniversityId(), p.getStudentName()))
+                .collect(Collectors.toList());
 
-        List<StudentCategoryProgressRepository.IncompleteDetailProjection> details =
+        // Incomplete details map
+        List<StudentCategoryProgressRepository.IncompleteDetailProjection> incRows =
                 progressRepository.findIncompleteDetails(programId, categoryName);
-        Map<String, Map<String, Object>> byId = new HashMap<>();
-        for (StudentCategoryProgressRepository.IncompleteDetailProjection d : details) {
+        Map<String, IncompleteStudentDetailDTO> incompleteDetailsById = new HashMap<>();
+        for (StudentCategoryProgressRepository.IncompleteDetailProjection d : incRows) {
             int minCourses = d.getMinRequiredCourses() == null ? 0 : d.getMinRequiredCourses();
             double minCredits = d.getMinRequiredCredits() == null ? 0.0 : d.getMinRequiredCredits();
-            int completedCourses = d.getCompletedCourses() == null ? 0 : d.getCompletedCourses();
-            double completedCredits = d.getCompletedCredits() == null ? 0.0 : d.getCompletedCredits();
-            int registeredCourses = d.getRegisteredCourses() == null ? 0 : d.getRegisteredCourses();
-            double registeredCredits = d.getRegisteredCredits() == null ? 0.0 : d.getRegisteredCredits();
+            int cCourses = d.getCompletedCourses() == null ? 0 : d.getCompletedCourses();
+            double cCredits = d.getCompletedCredits() == null ? 0.0 : d.getCompletedCredits();
+            int rCourses = d.getRegisteredCourses() == null ? 0 : d.getRegisteredCourses();
+            double rCredits = d.getRegisteredCredits() == null ? 0.0 : d.getRegisteredCredits();
+            int missingCourses = Math.max(0, minCourses - cCourses);
+            double missingCredits = Math.max(0.0, minCredits - cCredits);
 
-            int missingCourses = Math.max(0, minCourses - completedCourses);
-            double missingCredits = Math.max(0.0, minCredits - completedCredits);
-
-            Map<String, Object> m = new HashMap<>();
-            m.put("minRequiredCourses", minCourses);
-            m.put("minRequiredCredits", minCredits);
-            m.put("completedCourses", completedCourses);
-            m.put("completedCredits", completedCredits);
-            m.put("registeredCourses", registeredCourses);
-            m.put("registeredCredits", registeredCredits);
-            m.put("missingCourses", missingCourses);
-            m.put("missingCredits", missingCredits);
-            m.put("studentName", d.getStudentName());
-            byId.put(d.getUniversityId(), m);
+            IncompleteStudentDetailDTO dto = new IncompleteStudentDetailDTO(
+                    minCourses, minCredits, cCourses, cCredits, rCourses, rCredits, missingCourses, missingCredits
+            );
+            incompleteDetailsById.put(d.getUniversityId(), dto);
         }
-        out.put("incompleteDetailsById", byId);
+
+        // Completed details map
+        List<StudentCategoryProgressRepository.CompletedDetailProjection> compRows =
+                progressRepository.findCompletedDetails(programId, categoryName);
+        Map<String, CompletedStudentDetailDTO> completedDetailsById = new HashMap<>();
+        for (StudentCategoryProgressRepository.CompletedDetailProjection d : compRows) {
+            int cCourses = d.getCompletedCourses() == null ? 0 : d.getCompletedCourses();
+            double cCredits = d.getCompletedCredits() == null ? 0.0 : d.getCompletedCredits();
+            completedDetailsById.put(d.getUniversityId(), new CompletedStudentDetailDTO(cCourses, cCredits));
+        }
+
+        CategoryCompletionDetailsDTO out = new CategoryCompletionDetailsDTO();
+        out.setCompleted(completedSummaries);
+        out.setIncomplete(incompleteSummaries);
+        out.setIncompleteDetailsById(incompleteDetailsById);
+        out.setCompletedDetailsById(completedDetailsById);
+        // Category-level minimums
+        StudentCategoryProgressRepository.CategoryMinProjection min =
+                progressRepository.findCategoryMinimums(programId, categoryName);
+        if (min != null) {
+            Integer cminCourses = min.getMinRequiredCourses();
+            Double cminCredits = min.getMinRequiredCredits();
+            out.setCategoryMinRequiredCourses(cminCourses == null ? 0 : cminCourses);
+            out.setCategoryMinRequiredCredits(cminCredits == null ? 0.0 : cminCredits);
+        } else {
+            out.setCategoryMinRequiredCourses(0);
+            out.setCategoryMinRequiredCredits(0.0);
+        }
+        return out;
+    }
+
+    // Projected: treat registered as completed for determining completion
+    public CategoryCompletionDetailsDTO getCategoryCompletionListsWithDetailsProjected(Long programId, String categoryName) {
+        // Base data
+        List<StudentSummaryDTO> completedSummaries = getStudentsWhoMetCategory(programId, categoryName)
+                .stream()
+                .map(p -> new StudentSummaryDTO(p.getUniversityId(), p.getStudentName()))
+                .collect(Collectors.toList());
+        List<StudentSummaryDTO> incompleteSummaries = getStudentsWhoNotMetCategory(programId, categoryName)
+                .stream()
+                .map(p -> new StudentSummaryDTO(p.getUniversityId(), p.getStudentName()))
+                .collect(Collectors.toList());
+
+        // Incomplete details include registered metrics
+        List<StudentCategoryProgressRepository.IncompleteDetailProjection> incRows =
+                progressRepository.findIncompleteDetails(programId, categoryName);
+        Map<String, IncompleteStudentDetailDTO> incompleteDetailsById = new HashMap<>();
+        Set<String> projectedIds = new java.util.HashSet<>();
+        for (StudentCategoryProgressRepository.IncompleteDetailProjection d : incRows) {
+            int minCourses = d.getMinRequiredCourses() == null ? 0 : d.getMinRequiredCourses();
+            double minCredits = d.getMinRequiredCredits() == null ? 0.0 : d.getMinRequiredCredits();
+            int cCourses = d.getCompletedCourses() == null ? 0 : d.getCompletedCourses();
+            double cCredits = d.getCompletedCredits() == null ? 0.0 : d.getCompletedCredits();
+            int rCourses = d.getRegisteredCourses() == null ? 0 : d.getRegisteredCourses();
+            double rCredits = d.getRegisteredCredits() == null ? 0.0 : d.getRegisteredCredits();
+            int missingCourses = Math.max(0, minCourses - cCourses);
+            double missingCredits = Math.max(0.0, minCredits - cCredits);
+
+            IncompleteStudentDetailDTO dto = new IncompleteStudentDetailDTO(
+                    minCourses, minCredits, cCourses, cCredits, rCourses, rCredits, missingCourses, missingCredits
+            );
+            incompleteDetailsById.put(d.getUniversityId(), dto);
+
+            boolean coursesOk = (minCourses <= 0) || (cCourses + rCourses) >= minCourses;
+            boolean creditsOk = (minCredits <= 0.0) || (cCredits + rCredits) >= minCredits;
+            if (coursesOk && creditsOk) {
+                projectedIds.add(d.getUniversityId());
+            }
+        }
+
+        // Completed details (actual)
+        List<StudentCategoryProgressRepository.CompletedDetailProjection> compRows =
+                progressRepository.findCompletedDetails(programId, categoryName);
+        Map<String, CompletedStudentDetailDTO> completedDetailsById = new HashMap<>();
+        for (StudentCategoryProgressRepository.CompletedDetailProjection d : compRows) {
+            int cCourses = d.getCompletedCourses() == null ? 0 : d.getCompletedCourses();
+            double cCredits = d.getCompletedCredits() == null ? 0.0 : d.getCompletedCredits();
+            completedDetailsById.put(d.getUniversityId(), new CompletedStudentDetailDTO(cCourses, cCredits));
+        }
+
+        // Build projected completed list: union(actual completed + projectedIds from incomplete)
+        Map<String, String> nameById = new HashMap<>();
+        for (StudentSummaryDTO s : completedSummaries) nameById.put(s.getUniversityId(), s.getStudentName());
+        for (StudentSummaryDTO s : incompleteSummaries) nameById.putIfAbsent(s.getUniversityId(), s.getStudentName());
+
+        List<StudentSummaryDTO> projectedCompleted = new java.util.ArrayList<>(completedSummaries);
+        for (String pid : projectedIds) {
+            if (nameById.containsKey(pid)) {
+                projectedCompleted.add(new StudentSummaryDTO(pid, nameById.get(pid)));
+            }
+        }
+
+        // Remaining incomplete: those not in projected set
+        java.util.Set<String> projectedSet = new java.util.HashSet<>();
+        for (StudentSummaryDTO s : completedSummaries) projectedSet.add(s.getUniversityId());
+        projectedSet.addAll(projectedIds);
+        List<StudentSummaryDTO> remainingIncomplete = incompleteSummaries.stream()
+                .filter(s -> !projectedSet.contains(s.getUniversityId()))
+                .collect(Collectors.toList());
+
+        // Category-level minimums
+        StudentCategoryProgressRepository.CategoryMinProjection min =
+                progressRepository.findCategoryMinimums(programId, categoryName);
+
+        java.util.Map<String, Boolean> projectedById = new java.util.HashMap<>();
+        for (StudentSummaryDTO s : projectedCompleted) {
+            boolean proj = projectedIds.contains(s.getUniversityId()) && !completedDetailsById.containsKey(s.getUniversityId());
+            if (proj) projectedById.put(s.getUniversityId(), true);
+        }
+
+        CategoryCompletionDetailsDTO out = new CategoryCompletionDetailsDTO();
+        out.setCompleted(projectedCompleted);
+        out.setIncomplete(remainingIncomplete);
+        out.setIncompleteDetailsById(incompleteDetailsById);
+        out.setCompletedDetailsById(completedDetailsById);
+        if (min != null) {
+            Integer cminCourses = min.getMinRequiredCourses();
+            Double cminCredits = min.getMinRequiredCredits();
+            out.setCategoryMinRequiredCourses(cminCourses == null ? 0 : cminCourses);
+            out.setCategoryMinRequiredCredits(cminCredits == null ? 0.0 : cminCredits);
+        } else {
+            out.setCategoryMinRequiredCourses(0);
+            out.setCategoryMinRequiredCredits(0.0);
+        }
+        out.setProjectedById(projectedById);
         return out;
     }
 

@@ -4,7 +4,7 @@ import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
 import com.jfsd.exit_portal_backend.Model.Student;
 import com.jfsd.exit_portal_backend.Repository.StudentCategoryProgressRepository;
 import com.jfsd.exit_portal_backend.Repository.StudentRepository;
-import com.jfsd.exit_portal_backend.RequestBodies.Admin;
+import com.jfsd.exit_portal_backend.dto.Admin;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

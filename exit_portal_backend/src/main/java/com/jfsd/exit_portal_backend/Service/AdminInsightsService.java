@@ -130,6 +130,29 @@ public class AdminInsightsService {
         return dashboard;
     }
 
+    // ===== Projected Category Summaries (registered treated as completed) =====
+    @Cacheable(cacheNames = "admin_api", key = "'aggregateByCategoryProjected:' + T(java.util.Objects).toString(#programId)")
+    public List<Map<String, Object>> listCategorySummariesProjected(Long programId) {
+        List<StudentCategoryProgressRepository.CategoryAggregateProjected> rows =
+                progressRepository.aggregateByCategoryProjected(programId);
+        return rows.stream().map(a -> {
+            long total = a.getTotal();
+            long metA = a.getMetActual();
+            long metP = a.getMetProjected();
+            double rateA = total > 0 ? ((double) metA) / ((double) total) : 0.0;
+            double rateP = total > 0 ? ((double) metP) / ((double) total) : 0.0;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("category", a.getCategoryName());
+            m.put("total", total);
+            m.put("metActual", metA);
+            m.put("metProjected", metP);
+            m.put("metRateActual", Math.round(rateA * 1000.0) / 1000.0);
+            m.put("metRateProjected", Math.round(rateP * 1000.0) / 1000.0);
+            return m;
+        }).sorted(Comparator.comparing((Map<String, Object> m) -> (Double) m.get("metRateProjected")))
+          .collect(Collectors.toList());
+    }
+
     // Get basic stats for dashboard
     @Cacheable(cacheNames = "admin_api", key = "'getStats:' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> getStats(Long programId) {

@@ -1,17 +1,15 @@
-package com.jfsd.exit_portal_backend.RequestBodies;
+package com.jfsd.exit_portal_backend.dto.category;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-public class Student {
-
-    @JsonProperty("universityid")
-    @JsonAlias({"universityid", "studentId"})
+public class StudentSummaryDTO {
     private String universityId;
-
-    @JsonProperty("studentName")
-    @JsonAlias({"studentName", "studentName"})
     private String studentName;
+
+    public StudentSummaryDTO() {}
+
+    public StudentSummaryDTO(String universityId, String studentName) {
+        this.universityId = universityId;
+        this.studentName = studentName;
+    }
 
     public String getUniversityId() {
         return universityId;

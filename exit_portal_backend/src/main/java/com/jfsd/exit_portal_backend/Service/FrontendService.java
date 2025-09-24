@@ -15,12 +15,12 @@ import org.springframework.cache.annotation.Cacheable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.jfsd.exit_portal_backend.RequestBodies.CategoryCoursesDTO;
-import com.jfsd.exit_portal_backend.RequestBodies.InvalidPasswordException;
-import com.jfsd.exit_portal_backend.RequestBodies.StudentCategoryProgressDTO;
-import com.jfsd.exit_portal_backend.RequestBodies.StudentCourseReportDTO;
-import com.jfsd.exit_portal_backend.RequestBodies.UserNotFoundException;
-import com.jfsd.exit_portal_backend.RequestBodies.incompleteCategoryCourses;
+import com.jfsd.exit_portal_backend.dto.CategoryCoursesDTO;
+import com.jfsd.exit_portal_backend.dto.InvalidPasswordException;
+import com.jfsd.exit_portal_backend.dto.StudentCategoryProgressDTO;
+import com.jfsd.exit_portal_backend.dto.StudentCourseReportDTO;
+import com.jfsd.exit_portal_backend.dto.UserNotFoundException;
+import com.jfsd.exit_portal_backend.dto.incompleteCategoryCourses;
 import com.jfsd.exit_portal_backend.Model.StudentGrade;
 import com.jfsd.exit_portal_backend.Model.Courses;
 import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
@@ -31,7 +31,7 @@ import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
 import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import com.jfsd.exit_portal_backend.Repository.ProgramCourseCategoryRepository;
 
-import com.jfsd.exit_portal_backend.RequestBodies.Student;
+import com.jfsd.exit_portal_backend.dto.Student;
 // import com.jfsd.exit_portal_backend.Service.StudentCategoryProgressService;
 
 @Service
