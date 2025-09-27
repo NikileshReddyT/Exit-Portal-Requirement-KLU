@@ -60,3 +60,12 @@ button:not(.btn):hover {
     padding: 15px;
   }
 }
+
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

@@ -5,7 +5,7 @@ import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { FiTrendingDown, FiUsers, FiAlertTriangle, FiAward, FiTarget, FiChevronDown } from 'react-icons/fi';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Legend } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Legend, Rectangle } from 'recharts';
 
 // Reusable quick link button
 const QuickLink = ({ to, label, onClick }) => (
@@ -75,11 +75,58 @@ const CategoryPerformanceStackedChart = ({ data = [], onBarClick = () => {} }) =
   const rowH = isMobile ? 24 : 26;
   const innerHeight = Math.max(220, Math.min(900, sorted.length * rowH + 64));
 
+  // Smart label renderers for readability
+  const ActualLabel = (props) => {
+    const { x, y, width, height, value } = props;
+    if (!value || value <= 0) return null;
+    const text = `${value}%`;
+    const pad = 6;
+    const minInside = 28;
+    const isInside = width >= minInside;
+    const tx = isInside ? x + width - pad : x + width + pad;
+    const anchor = isInside ? 'end' : 'start';
+    const fill = isInside ? '#ffffff' : '#065f46'; // white inside green, dark green outside
+    return (
+      <text x={tx} y={y + height / 2} dy={4} textAnchor={anchor} fill={fill} fontSize={11} fontWeight={600}>
+        {text}
+      </text>
+    );
+  };
+
+  const ProjectedLabel = (props) => {
+    const { x, y, width, height, value } = props;
+    if (!value || value <= 0) return null;
+    const text = `+${value}%`;
+    const pad = 6;
+    const minInside = 34;
+    const isInside = width >= minInside;
+    const tx = isInside ? x + width - pad : x + width + pad;
+    const anchor = isInside ? 'end' : 'start';
+    const fill = isInside ? '#ffffff' : '#1e3a8a'; // white on blue, dark blue outside
+    return (
+      <text x={tx} y={y + height / 2} dy={4} textAnchor={anchor} fill={fill} fontSize={11} fontWeight={600}>
+        {text}
+      </text>
+    );
+  };
+
+  // Rounded corners: round only the outer edges of the stacked bar; if only one segment exists, round both
+  const actualShape = (props) => {
+    const proj = props?.payload?.projectedExtra || 0;
+    const radius = proj > 0 ? [9, 0, 0, 9] : [9, 9, 9, 9];
+    return <Rectangle {...props} radius={radius} />;
+  };
+  const projectedShape = (props) => {
+    const act = props?.payload?.actual || 0;
+    const radius = act > 0 ? [0, 9, 9, 0] : [9, 9, 9, 9];
+    return <Rectangle {...props} radius={radius} />;
+  };
+
   return (
     <div className="w-full">
       <div style={{ height: innerHeight, minWidth: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sorted} layout="vertical" margin={{ top: 12, right: (isMobile ? 64 : 84), bottom: 12, left: 12 }} barSize={isMobile ? 10 : 12}>
+          <BarChart data={sorted} layout="vertical" margin={{ top: 12, right: (isMobile ? 64 : 96), bottom: 12, left: 12 }} barSize={isMobile ? 10 : 12}>
             <CartesianGrid horizontal={false} stroke="rgba(15,23,42,0.06)" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} tick={{ fill: '#334155', fontSize: 12 }} />
             <YAxis type="category" dataKey="name" width={isMobile ? 170 : 260} axisLine={false} tickLine={false} tick={{ fill: '#334155', fontSize: isMobile ? 11 : 12 }} tickFormatter={tf} />
@@ -94,11 +141,27 @@ const CategoryPerformanceStackedChart = ({ data = [], onBarClick = () => {} }) =
               itemStyle={{ color: '#0f172a' }}
             />
             <Legend iconType="circle" verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: 8 }} />
-            <Bar name="Actual" stackId="a" dataKey="actual" fill="#16a34a" radius={[9, 0, 0, 9]} onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}>
-              <LabelList dataKey="actual" position="insideRight" offset={6} formatter={(v) => v > 0 ? `${v}%` : ''} fill="#052e16" fontSize={isMobile ? 10 : 11} />
+            <Bar
+              name="Actual"
+              stackId="a"
+              dataKey="actual"
+              fill="#16a34a"
+              minPointSize={2}
+              shape={actualShape}
+              onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}
+            >
+              <LabelList dataKey="actual" content={<ActualLabel />} />
             </Bar>
-            <Bar name="Projected" stackId="a" dataKey="projectedExtra" fill="#2563eb" radius={[0, 9, 9, 0]} onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}>
-              <LabelList dataKey="projectedExtra" position="right" offset={isMobile ? 4 : 8} formatter={(v) => v > 0 ? `+${v}%` : ''} fill="#1e3a8a" fontSize={isMobile ? 10 : 11} />
+            <Bar
+              name="Projected"
+              stackId="a"
+              dataKey="projectedExtra"
+              fill="#2563eb"
+              minPointSize={2}
+              shape={projectedShape}
+              onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}
+            >
+              <LabelList dataKey="projectedExtra" content={<ProjectedLabel />} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>

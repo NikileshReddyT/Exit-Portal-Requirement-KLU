@@ -324,7 +324,7 @@ const AdminLayout = () => {
               )}
             </div>
             {/* Nav (white body) */}
-            <nav className={`flex-1 ${sidebarHover ? 'px-4' : 'px-0'} py-2 space-y-3 bg-white text-gray-900`}>
+            <nav className={`flex-1 ${sidebarHover ? 'px-4' : 'px-0'} py-2 space-y-3 bg-white text-gray-900 overflow-y-auto scrollbar-none`}>
               {navGroups.map((group) => (
                 <AccordionGroup key={group.title} title={group.title} defaultOpen={true} variant="light" expanded={sidebarHover}>
                   {group.items.map((item) => (
