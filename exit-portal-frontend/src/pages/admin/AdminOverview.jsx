@@ -112,11 +112,15 @@ const CategoryPerformanceStackedChart = ({ data = [], onBarClick = () => {} }) =
 
   // Rounded corners: round only the outer edges of the stacked bar; if only one segment exists, round both
   const actualShape = (props) => {
+    const value = props?.value ?? 0;
+    if (!value || value <= 0 || (props?.width ?? 0) <= 0) return null;
     const proj = props?.payload?.projectedExtra || 0;
     const radius = proj > 0 ? [9, 0, 0, 9] : [9, 9, 9, 9];
     return <Rectangle {...props} radius={radius} />;
   };
   const projectedShape = (props) => {
+    const value = props?.value ?? 0;
+    if (!value || value <= 0 || (props?.width ?? 0) <= 0) return null;
     const act = props?.payload?.actual || 0;
     const radius = act > 0 ? [0, 9, 9, 0] : [9, 9, 9, 9];
     return <Rectangle {...props} radius={radius} />;
@@ -146,7 +150,6 @@ const CategoryPerformanceStackedChart = ({ data = [], onBarClick = () => {} }) =
               stackId="a"
               dataKey="actual"
               fill="#16a34a"
-              minPointSize={2}
               shape={actualShape}
               onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}
             >
@@ -157,7 +160,6 @@ const CategoryPerformanceStackedChart = ({ data = [], onBarClick = () => {} }) =
               stackId="a"
               dataKey="projectedExtra"
               fill="#2563eb"
-              minPointSize={2}
               shape={projectedShape}
               onClick={(data, index) => { const name = data?.payload?.name || (sorted[index]?.name); if (name) onBarClick(name); }}
             >
