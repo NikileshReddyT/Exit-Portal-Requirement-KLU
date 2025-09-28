@@ -244,6 +244,33 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
             nativeQuery = true)
     List<MetProjection> findStudentsWhoNotMetCategory(@Param("programId") Long programId, @Param("categoryName") String categoryName);
 
+    // ===== Student-Category matrix (native, program-scoped) =====
+    interface StudentCategoryCellProjection {
+        String getStudentId();
+        String getStudentName();
+        String getCategoryName();
+        Integer getCategoryId();
+        Integer getCompletedCourses();
+        Integer getMinRequiredCourses();
+        Double getCompletedCredits();
+        Double getMinRequiredCredits();
+    }
+
+    @Query(value = "SELECT\n" +
+            "  scp.university_id AS studentId,\n" +
+            "  scp.student_name AS studentName,\n" +
+            "  scp.category_name AS categoryName,\n" +
+            "  scp.category_id AS categoryId,\n" +
+            "  COALESCE(scp.completed_courses, 0) AS completedCourses,\n" +
+            "  COALESCE(scp.min_required_courses, 0) AS minRequiredCourses,\n" +
+            "  COALESCE(scp.completed_credits, 0) AS completedCredits,\n" +
+            "  COALESCE(scp.min_required_credits, 0) AS minRequiredCredits\n" +
+            "FROM student_category_progress scp\n" +
+            "WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "ORDER BY scp.university_id, scp.category_id",
+            nativeQuery = true)
+    List<StudentCategoryCellProjection> findStudentCategoryCells(@Param("programId") Long programId);
+
     // Count students whose number of unmet categories equals a specific value (e.g., 1 for "close to completion")
     @Query(value = "SELECT COUNT(*) FROM (\n" +
             "  SELECT scp.university_id,\n" +

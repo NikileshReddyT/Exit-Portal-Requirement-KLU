@@ -20,6 +20,7 @@ import AdminGrades from './pages/admin/AdminGrades';
 import AdminProgress from './pages/admin/AdminProgress';
 import AdminStudentReport from './pages/admin/AdminStudentReport';
 import AdminInsights from './pages/admin/AdminInsights';
+import AdminStudentCategoryMatrix from './pages/admin/AdminStudentCategoryMatrix';
 import AdminDataUpload from './pages/admin/AdminDataUpload';
 import AdminDangerZone from './pages/admin/AdminDangerZone';
 import SuperAdminDashboard from "./pages/admin/SuperAdminDashboard";
@@ -58,6 +59,7 @@ function App() {
           <Route index element={<Navigate to="/admin/overview" replace />} />
           <Route path='overview' element={<AdminOverview />} />
           <Route path='insights' element={<AdminInsights />} />
+          <Route path='insights/student-category-matrix' element={<AdminStudentCategoryMatrix />} />
           <Route path='analytics' element={<AdminAnalytics />} />
           <Route path='students' element={<AdminStudents />} />
           <Route path='students/:studentId' element={<AdminStudentDetails />} />
@@ -87,6 +89,7 @@ function App() {
           <Route index element={<Navigate to="/superadmin/overview" replace />} />
           <Route path='overview' element={<AdminOverview />} />
           <Route path='insights' element={<AdminInsights />} />
+          <Route path='insights/student-category-matrix' element={<AdminStudentCategoryMatrix />} />
           <Route path='analytics' element={<AdminAnalytics />} />
           <Route path='students' element={<AdminStudents />} />
           <Route path='students/:studentId' element={<AdminStudentDetails />} />

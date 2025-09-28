@@ -188,6 +188,23 @@ public class AdminInsightsController {
         return ResponseEntity.ok(adminInsightsService.listCategorySummariesProjected(effectiveProgramId));
     }
 
+    // Student-Category matrix (per student values per category) - native, program-scoped
+    @GetMapping("/insights/student-category-matrix")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getStudentCategoryMatrix(
+            @RequestParam(value = "programId", required = false) Long requestProgramId,
+            HttpServletRequest request
+    ) {
+        String jwt = getJwtFromRequest(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        Long userProgramId = jwtUtil.getProgramIdFromJwtToken(jwt);
+        Long effectiveProgramId = "SUPER_ADMIN".equals(userType) ? requestProgramId : userProgramId;
+        return ResponseEntity.ok(adminInsightsService.getStudentCategoryMatrix(effectiveProgramId));
+    }
+
     // ===== Data Explorer Endpoints =====
     @GetMapping("/data/students")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")

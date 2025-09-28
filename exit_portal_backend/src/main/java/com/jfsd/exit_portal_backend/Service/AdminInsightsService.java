@@ -520,6 +520,70 @@ public class AdminInsightsService {
                 .collect(Collectors.toList());
     }
 
+    // ===== Student-Category Matrix (native, program-scoped) =====
+    // Returns: { categories: [..], rows: [ { studentId, studentName, cells: { categoryName: { completedCourses, minRequiredCourses, completedCredits, minRequiredCredits } } } ] }
+    @Cacheable(cacheNames = "admin_api", key = "'studentCategoryMatrix:' + T(java.util.Objects).toString(#programId)")
+    public Map<String, Object> getStudentCategoryMatrix(Long programId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        // Resolve categories for this program (ensures headers even if a student lacks a row unexpectedly)
+        List<String> categories;
+        if (programId != null) {
+            Optional<Program> p = programRepository.findById(programId);
+            if (p.isEmpty()) {
+                out.put("categories", List.of());
+                out.put("rows", List.of());
+                return out;
+            }
+            categories = categoriesRepository.findByProgram(p.get()).stream()
+                    .map(Categories::getCategoryName)
+                    .sorted(String::compareToIgnoreCase)
+                    .collect(Collectors.toList());
+        } else {
+            // If not scoped, fall back to all categories
+            categories = categoriesRepository.findAll().stream()
+                    .map(Categories::getCategoryName)
+                    .distinct()
+                    .sorted(String::compareToIgnoreCase)
+                    .collect(Collectors.toList());
+        }
+
+        List<StudentCategoryProgressRepository.StudentCategoryCellProjection> cells =
+                progressRepository.findStudentCategoryCells(programId);
+
+        // Group by student
+        Map<String, Map<String, Object>> rowByStudent = new LinkedHashMap<>();
+        for (StudentCategoryProgressRepository.StudentCategoryCellProjection c : cells) {
+            String sid = c.getStudentId();
+            if (sid == null) continue;
+            Map<String, Object> row = rowByStudent.computeIfAbsent(sid, k -> {
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("studentId", c.getStudentId());
+                r.put("studentName", c.getStudentName());
+                r.put("cells", new LinkedHashMap<String, Map<String, Object>>());
+                return r;
+            });
+            @SuppressWarnings("unchecked")
+            Map<String, Map<String, Object>> cellMap = (Map<String, Map<String, Object>>) row.get("cells");
+            String cat = c.getCategoryName();
+            if (cat == null) continue;
+            Map<String, Object> cell = cellMap.computeIfAbsent(cat, k -> new LinkedHashMap<>());
+            cell.put("completedCourses", c.getCompletedCourses());
+            cell.put("minRequiredCourses", c.getMinRequiredCourses());
+            cell.put("completedCredits", c.getCompletedCredits());
+            cell.put("minRequiredCredits", c.getMinRequiredCredits());
+        }
+
+        // Finalize rows in deterministic order by studentId
+        List<Map<String, Object>> rows = rowByStudent.values().stream()
+                .sorted(Comparator.comparing(m -> String.valueOf(m.get("studentId"))))
+                .collect(Collectors.toList());
+
+        out.put("categories", categories);
+        out.put("rows", rows);
+        return out;
+    }
+
     // List students who completed a given course (promotion == 'P'), optionally scoped by program
     @Cacheable(cacheNames = "admin_api", key = "'listCourseCompleters:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#courseCode)")
     public List<Map<String, Object>> listCourseCompleters(Long programId, String courseCode) {
