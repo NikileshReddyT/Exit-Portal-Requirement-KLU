@@ -2,7 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 
 const defaultDescription = 'KL University Exit Portal for administrators and students. Upload results, manage categories and courses, and view analytics and progress toward exit requirements.';
-const defaultImage = '/kllogo.svg';
+const defaultImage = '/android-chrome-512x512.png';
 const siteName = 'KL University Exit Portal';
 
 export default function SEO({
