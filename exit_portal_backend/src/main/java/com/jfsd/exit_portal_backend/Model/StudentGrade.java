@@ -10,6 +10,7 @@ import jakarta.persistence.*;
         @Index(name = "idx_sg_course", columnList = "course_id"),
         @Index(name = "idx_sg_university_category", columnList = "university_id, category"),
         @Index(name = "idx_sg_course_promotion", columnList = "course_id, promotion"),
+        @Index(name = "idx_sg_university_promotion", columnList = "university_id, promotion"),
         @Index(name = "idx_sg_category", columnList = "category"),
         @Index(name = "idx_sg_promotion", columnList = "promotion"),
         @Index(name = "idx_sg_year_sem", columnList = "academic_year, semester")
