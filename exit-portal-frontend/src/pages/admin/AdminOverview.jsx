@@ -322,6 +322,34 @@ const AdminOverview = () => {
     );
   }
 
+  // If no students exist for the selected scope, guide admin to upload data
+  const zeroStudents = (data?.stats?.totalStudents ?? 0) === 0;
+  if (zeroStudents) {
+    const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
+    const goUpload = () => {
+      const qp = programId ? `?programId=${encodeURIComponent(String(programId))}` : '';
+      navigate(`${basePath}/upload${qp}`);
+    };
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="max-w-xl w-full bg-white rounded-xl border border-gray-200 shadow p-6 text-center">
+          <div className="text-5xl mb-4">📂</div>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">No students found</h2>
+          <p className="text-gray-600 mb-6">
+            To view the program overview, please upload student details for this program.
+            You can use the Data Upload page to import registrations, results, and grades.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button className="btn px-4 py-2 border border-gray-200 border-2 shadow-sm rounded-md bg-red-700 text-white hover:bg-red-600 transition-colors duration-200" onClick={goUpload}>Go to Data Upload</button>
+          </div>
+          <div className="mt-4 text-xs text-gray-500">
+            Tip: Upload Registrations first, then Results/Grades.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Determine base path for navigation
   const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
