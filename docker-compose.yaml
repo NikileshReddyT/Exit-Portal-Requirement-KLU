@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 'Nikki@2005'
+      MYSQL_DATABASE: 'exitportal'
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+  backend:
+    container_name: exit-b
+    build: ./exit_portal_backend
+    image: exit-b
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./exit_portal_backend/.env
+    depends_on:
+      - mysql
+  frontend:
+    container_name: exit-f
+    build: ./exit-portal-frontend
+    image: exit-f
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./exit-portal-frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  
+      
