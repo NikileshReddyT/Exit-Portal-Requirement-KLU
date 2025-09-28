@@ -37,9 +37,12 @@ public class AdminManagementController {
     public ResponseEntity<List<Map<String, Object>>> listAdmins(@RequestParam(value = "programId", required = false) Long programId) {
         List<AdminUser> admins;
         if (programId != null) {
-            // Filter by program
+            // Filter by program BUT always include SUPER_ADMINs (regardless of program)
             admins = adminUserRepository.findAll().stream()
-                    .filter(admin -> admin.getProgram() != null && admin.getProgram().getProgramId().equals(programId))
+                    .filter(admin ->
+                            admin.getRole() == AdminUser.Role.SUPER_ADMIN ||
+                            (admin.getProgram() != null && admin.getProgram().getProgramId().equals(programId))
+                    )
                     .collect(Collectors.toList());
         } else {
             // Return all admin users

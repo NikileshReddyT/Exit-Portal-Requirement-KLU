@@ -46,13 +46,9 @@ const AdminUsers = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Build API URL with programId if available for filtering admin users
-      const adminUrl = programId 
-        ? `${config.backendUrl}/api/v1/admin/admin-users?programId=${programId}`
-        : `${config.backendUrl}/api/v1/admin/admin-users`;
-      
+      // Always fetch all admin users by default to avoid unintended filtering by ProgramContext
       const [adminsRes, progsRes] = await Promise.all([
-        axios.get(adminUrl, { withCredentials: true }),
+        axios.get(`${config.backendUrl}/api/v1/admin/admin-users`, { withCredentials: true }),
         axios.get(`${config.backendUrl}/api/v1/admin/programs`, { withCredentials: true })
       ]);
       setAdmins(adminsRes.data || []);
