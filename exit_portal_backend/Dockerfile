@@ -1,3 +1,6 @@
+# Build stage
+FROM jelastic/maven:3.9.5-openjdk-21 AS build
+WORKDIR /app
 
 # Copy pom.xml first for dependency caching
 COPY pom.xml .
