@@ -52,9 +52,12 @@ public class AdminMaintenanceService {
         // 5) program_category_requirement by program_id
         jdbcTemplate.update("DELETE FROM program_category_requirement WHERE program_id = ?", programId);
 
-        // 6) remove orphan courses that are not mapped to any program anymore
+        // 6) remove truly orphan courses: no program mapping AND no student_grades referencing them
+        //    This avoids foreign key violations against student_grades.course_id -> courses.course_id
         jdbcTemplate.update(
-            "DELETE FROM courses WHERE course_id NOT IN (SELECT DISTINCT course_id FROM program_course_category)"
+            "DELETE FROM courses c \n" +
+            "WHERE NOT EXISTS (SELECT 1 FROM program_course_category pcc WHERE pcc.course_id = c.course_id) \n" +
+            "  AND NOT EXISTS (SELECT 1 FROM student_grades sg WHERE sg.course_id = c.course_id)"
         );
 
         // 7) categories by program_id
