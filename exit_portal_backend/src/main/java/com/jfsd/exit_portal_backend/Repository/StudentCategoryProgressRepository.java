@@ -1,6 +1,8 @@
 package com.jfsd.exit_portal_backend.Repository;
 
 import com.jfsd.exit_portal_backend.Model.StudentCategoryProgress;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -70,6 +72,24 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
 
     @Query("SELECT scp FROM StudentCategoryProgress scp WHERE scp.program.code = :programCode")
     List<StudentCategoryProgress> findByProgramCode(@Param("programCode") String programCode);
+
+    // Pageable variants for listings
+    org.springframework.data.domain.Page<StudentCategoryProgress> findByUniversityId(String universityId, org.springframework.data.domain.Pageable pageable);
+    org.springframework.data.domain.Page<StudentCategoryProgress> findByProgram_ProgramId(Long programId, org.springframework.data.domain.Pageable pageable);
+    org.springframework.data.domain.Page<StudentCategoryProgress> findByUniversityIdAndProgram_Code(String universityId, String programCode, org.springframework.data.domain.Pageable pageable);
+
+    @Query(value = "SELECT * FROM student_category_progress scp\n" +
+            "WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  AND (:studentId IS NULL OR :studentId = '' OR scp.university_id = :studentId)\n" +
+            "  AND (:q IS NULL OR :q = '' OR scp.university_id LIKE CONCAT('%', :q, '%') OR scp.student_name LIKE CONCAT('%', :q, '%') OR scp.category_name LIKE CONCAT('%', :q, '%'))\n" +
+            "ORDER BY scp.university_id, scp.category_name",
+            countQuery = "SELECT COUNT(*) FROM student_category_progress scp WHERE (:programId IS NULL OR scp.program_id = :programId) AND (:studentId IS NULL OR :studentId = '' OR scp.university_id = :studentId) AND (:q IS NULL OR :q = '' OR scp.university_id LIKE CONCAT('%', :q, '%') OR scp.student_name LIKE CONCAT('%', :q, '%') OR scp.category_name LIKE CONCAT('%', :q, '%'))",
+            nativeQuery = true)
+    org.springframework.data.domain.Page<StudentCategoryProgress> findPagedProgress(
+            @Param("programId") Long programId,
+            @Param("studentId") String studentId,
+            @Param("q") String q,
+            org.springframework.data.domain.Pageable pageable);
 
     // ===== Optimized Aggregates for Dashboard (avoid loading large entity lists) =====
     // Count students who have met ALL their category requirements within optional program scope.
@@ -256,6 +276,12 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
         Double getMinRequiredCredits();
     }
 
+    // Minimal projection of distinct students in SCP used for paged matrix
+    interface StudentKeyProjection {
+        String getStudentId();
+        String getStudentName();
+    }
+
     @Query(value = "SELECT\n" +
             "  scp.university_id AS studentId,\n" +
             "  scp.student_name AS studentName,\n" +
@@ -270,6 +296,34 @@ public interface StudentCategoryProgressRepository extends JpaRepository<Student
             "ORDER BY scp.university_id, scp.category_id",
             nativeQuery = true)
     List<StudentCategoryCellProjection> findStudentCategoryCells(@Param("programId") Long programId);
+
+    // Paged list of distinct students for matrix
+    @Query(value = "SELECT scp.university_id AS studentId, MAX(scp.student_name) AS studentName\n" +
+            "FROM student_category_progress scp\n" +
+            "WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  AND ( :q IS NULL OR :q = '' OR scp.university_id LIKE CONCAT('%', :q, '%') OR scp.student_name LIKE CONCAT('%', :q, '%') )\n" +
+            "GROUP BY scp.university_id\n" +
+            "ORDER BY scp.university_id",
+            countQuery = "SELECT COUNT(DISTINCT scp.university_id) FROM student_category_progress scp WHERE (:programId IS NULL OR scp.program_id = :programId) AND ( :q IS NULL OR :q = '' OR scp.university_id LIKE CONCAT('%', :q, '%') OR scp.student_name LIKE CONCAT('%', :q, '%') )",
+            nativeQuery = true)
+    Page<StudentKeyProjection> findPagedStudentKeys(@Param("programId") Long programId, @Param("q") String q, Pageable pageable);
+
+    // Cells only for a specific set of students (used together with paged keys)
+    @Query(value = "SELECT\n" +
+            "  scp.university_id AS studentId,\n" +
+            "  scp.student_name AS studentName,\n" +
+            "  scp.category_name AS categoryName,\n" +
+            "  scp.category_id AS categoryId,\n" +
+            "  COALESCE(scp.completed_courses, 0) AS completedCourses,\n" +
+            "  COALESCE(scp.min_required_courses, 0) AS minRequiredCourses,\n" +
+            "  COALESCE(scp.completed_credits, 0) AS completedCredits,\n" +
+            "  COALESCE(scp.min_required_credits, 0) AS minRequiredCredits\n" +
+            "FROM student_category_progress scp\n" +
+            "WHERE (:programId IS NULL OR scp.program_id = :programId)\n" +
+            "  AND scp.university_id IN (:studentIds)\n" +
+            "ORDER BY scp.university_id, scp.category_id",
+            nativeQuery = true)
+    List<StudentCategoryCellProjection> findStudentCategoryCellsForStudents(@Param("programId") Long programId, @Param("studentIds") List<String> studentIds);
 
     // Count students whose number of unmet categories equals a specific value (e.g., 1 for "close to completion")
     @Query(value = "SELECT COUNT(*) FROM (\n" +

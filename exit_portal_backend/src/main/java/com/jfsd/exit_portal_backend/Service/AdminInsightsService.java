@@ -452,15 +452,24 @@ public class AdminInsightsService {
         }).collect(Collectors.toList());
     }
 
-    // Paginated grades listing for performance
-    @Cacheable(cacheNames = "admin_api", key = "'listGradesPaged:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId) + ':' + T(java.util.Objects).toString(#category) + ':' + #page + ':' + #size")
-    public Map<String, Object> listGradesPaged(Long programId, String studentId, String category, int page, int size) {
+    // Paginated grades listing for performance (optional server-side search)
+    @Cacheable(cacheNames = "admin_api", key = "'listGradesPaged:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId) + ':' + T(java.util.Objects).toString(#category) + ':' + T(java.util.Objects).toString(#q) + ':' + #page + ':' + #size")
+    public Map<String, Object> listGradesPaged(Long programId, String studentId, String category, String q, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
         Page<StudentGrade> pg;
         boolean hasStudent = studentId != null && !studentId.isBlank();
         boolean hasCategory = category != null && !category.isBlank();
+        String qNorm = (q != null && !q.isBlank()) ? q.trim() : null;
 
-        if (hasStudent && hasCategory) {
+        if (qNorm != null) {
+            pg = studentGradeRepository.searchPaged(
+                    programId,
+                    hasStudent ? studentId.trim() : null,
+                    hasCategory ? category.trim() : null,
+                    qNorm,
+                    pageable
+            );
+        } else if (hasStudent && hasCategory) {
             // Student+Category filter (student is unique enough; program scoping not required)
             pg = studentGradeRepository.findByStudent_StudentIdAndCategory(studentId.trim(), category.trim(), pageable);
         } else if (hasStudent && programId != null) {
@@ -488,6 +497,46 @@ public class AdminInsightsService {
             m.put("year", g.getYear());
             m.put("semester", g.getSemester());
             m.put("promotion", g.getPromotion());
+            return m;
+        }).collect(Collectors.toList());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("content", content);
+        out.put("page", pg.getNumber());
+        out.put("size", pg.getSize());
+        out.put("totalElements", pg.getTotalElements());
+        out.put("totalPages", pg.getTotalPages());
+        out.put("hasNext", pg.hasNext());
+        out.put("hasPrevious", pg.hasPrevious());
+        return out;
+    }
+
+    // Paginated progress listing with optional server-side search
+    @Cacheable(cacheNames = "admin_api", key = "'listProgressPaged:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId) + ':' + T(java.util.Objects).toString(#q) + ':' + #page + ':' + #size")
+    public Map<String, Object> listProgressPaged(Long programId, String studentId, String q, int page, int size) {
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
+        Page<StudentCategoryProgress> pg = progressRepository.findPagedProgress(
+                programId,
+                (studentId != null && !studentId.isBlank()) ? studentId.trim() : null,
+                (q != null && !q.isBlank()) ? q.trim() : null,
+                pageable
+        );
+
+        List<Map<String, Object>> content = pg.getContent().stream().map(scp -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", scp.getId());
+            m.put("universityId", scp.getUniversityId());
+            m.put("studentName", scp.getStudentName());
+            m.put("categoryName", scp.getCategoryName());
+            m.put("minRequiredCourses", scp.getMinRequiredCourses());
+            m.put("minRequiredCredits", scp.getMinRequiredCredits());
+            m.put("completedCourses", scp.getCompletedCourses());
+            m.put("completedCredits", scp.getCompletedCredits());
+            if (scp.getProgram() != null) {
+                m.put("programId", scp.getProgram().getProgramId());
+                m.put("programCode", scp.getProgram().getCode());
+                m.put("programName", scp.getProgram().getName());
+            }
             return m;
         }).collect(Collectors.toList());
 
@@ -581,6 +630,94 @@ public class AdminInsightsService {
 
         out.put("categories", categories);
         out.put("rows", rows);
+        return out;
+    }
+
+    // Paged variant to avoid loading all students into memory
+    // Returns: { categories, rows, page, size, totalElements, totalPages, hasNext, hasPrevious }
+    @Cacheable(cacheNames = "admin_api", key = "'studentCategoryMatrixPaged:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#q) + ':' + #page + ':' + #size")
+    public Map<String, Object> getStudentCategoryMatrixPaged(Long programId, String q, int page, int size) {
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        // Resolve categories
+        List<String> categories;
+        if (programId != null) {
+            Optional<Program> p = programRepository.findById(programId);
+            if (p.isEmpty()) {
+                out.put("categories", List.of());
+                out.put("rows", List.of());
+                out.put("page", Math.max(0, page));
+                out.put("size", Math.max(1, size));
+                out.put("totalElements", 0L);
+                out.put("totalPages", 0);
+                out.put("hasNext", false);
+                out.put("hasPrevious", false);
+                return out;
+            }
+            categories = categoriesRepository.findByProgram(p.get()).stream()
+                    .map(Categories::getCategoryName)
+                    .sorted(String::compareToIgnoreCase)
+                    .collect(Collectors.toList());
+        } else {
+            categories = categoriesRepository.findAll().stream()
+                    .map(Categories::getCategoryName)
+                    .distinct()
+                    .sorted(String::compareToIgnoreCase)
+                    .collect(Collectors.toList());
+        }
+
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
+        Page<StudentCategoryProgressRepository.StudentKeyProjection> keyPage =
+                progressRepository.findPagedStudentKeys(programId, q, pageable);
+
+        List<String> studentIds = keyPage.getContent().stream()
+                .map(StudentCategoryProgressRepository.StudentKeyProjection::getStudentId)
+                .collect(Collectors.toList());
+
+        List<Map<String, Object>> rows;
+        if (studentIds.isEmpty()) {
+            rows = List.of();
+        } else {
+            List<StudentCategoryProgressRepository.StudentCategoryCellProjection> cells =
+                    progressRepository.findStudentCategoryCellsForStudents(programId, studentIds);
+
+            // Group by student
+            Map<String, Map<String, Object>> rowByStudent = new LinkedHashMap<>();
+            for (StudentCategoryProgressRepository.StudentKeyProjection key : keyPage.getContent()) {
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("studentId", key.getStudentId());
+                r.put("studentName", key.getStudentName());
+                r.put("cells", new LinkedHashMap<String, Map<String, Object>>());
+                rowByStudent.put(key.getStudentId(), r);
+            }
+            for (StudentCategoryProgressRepository.StudentCategoryCellProjection c : cells) {
+                String sid = c.getStudentId();
+                if (sid == null) continue;
+                Map<String, Object> row = rowByStudent.get(sid);
+                if (row == null) continue; // should not happen
+                @SuppressWarnings("unchecked")
+                Map<String, Map<String, Object>> cellMap = (Map<String, Map<String, Object>>) row.get("cells");
+                String cat = c.getCategoryName();
+                if (cat == null) continue;
+                Map<String, Object> cell = cellMap.computeIfAbsent(cat, k -> new LinkedHashMap<>());
+                cell.put("completedCourses", c.getCompletedCourses());
+                cell.put("minRequiredCourses", c.getMinRequiredCourses());
+                cell.put("completedCredits", c.getCompletedCredits());
+                cell.put("minRequiredCredits", c.getMinRequiredCredits());
+            }
+            rows = rowByStudent.values().stream()
+                    .sorted(Comparator.comparing(m -> String.valueOf(m.get("studentId"))))
+                    .collect(Collectors.toList());
+        }
+
+        out.put("categories", categories);
+        out.put("rows", rows);
+        out.put("page", keyPage.getNumber());
+        out.put("size", keyPage.getSize());
+        out.put("totalElements", keyPage.getTotalElements());
+        out.put("totalPages", keyPage.getTotalPages());
+        out.put("hasNext", keyPage.hasNext());
+        out.put("hasPrevious", keyPage.hasPrevious());
         return out;
     }
 

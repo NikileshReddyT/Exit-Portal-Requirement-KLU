@@ -36,6 +36,8 @@ const DataTable = ({
   searchPlaceholder = 'Search...',
   defaultSearch = '',
   onSearchChange,
+  // When serverSide is true, optionally provide a fetcher to retrieve ALL rows for export
+  exportAllFetcher,
 }) => {
   const inferredColumns = useMemo(() => {
     if (Array.isArray(columns) && columns.length) return columns;
@@ -64,6 +66,7 @@ const DataTable = ({
   const [search, setSearch] = useState(defaultSearch || '');
   const [columnFilters, setColumnFilters] = useState({});
   const [showFilters, setShowFilters] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // Removed wrap toggle and column visibility menu per new spec
   
   // Sync search input when defaultSearch prop changes (e.g., URL back/forward)
@@ -78,7 +81,7 @@ const DataTable = ({
   // Apply client-side filtering (global search + per-column) when not server-side
   const effectiveRows = useMemo(() => {
     if (!rows) return [];
-    if (serverSide) return rows;
+    // Apply client-side filters to whatever rows were provided (paged or full)
     const s = (search || '').trim().toLowerCase();
     const hasSearch = !!s;
     const activeFilters = columnFilters || {};
@@ -98,7 +101,7 @@ const DataTable = ({
         return String(cell).toLowerCase().includes(s);
       });
     });
-  }, [rows, serverSide, search, columnFilters, inferredColumns, visibleColumns]);
+  }, [rows, search, columnFilters, inferredColumns, visibleColumns]);
 
   const sortedRows = useMemo(() => {
     if (!effectiveRows) return [];
@@ -184,86 +187,73 @@ const DataTable = ({
     }
   };
 
-  // CSV export using visible columns and current filtered/sorted rows
-  const downloadCSV = () => {
-    const cols = visibleColumns.length ? visibleColumns : inferredColumns;
-    const header = cols.map((c) => '"' + String(c.header ?? c.key).replace(/"/g, '""') + '"').join(',');
-    const dataLines = (serverSide ? sortedRows : sortedRows).map((row) => {
-      return cols
-        .map((c) => {
-          const raw = row?.[c.key];
-          const str = raw == null ? '' : String(raw);
-          const needsQuote = /[",\n]/.test(str);
-          const escaped = str.replace(/"/g, '""');
-          return needsQuote ? `"${escaped}"` : escaped;
-        })
+  // CSV export: when serverSide and exportAllFetcher provided, fetch all rows, apply current filters/search, then export
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const cols = visibleColumns.length ? visibleColumns : inferredColumns;
+      const header = cols
+        .map((c) => '"' + String(c.header ?? c.key).replace(/"/g, '""') + '"')
         .join(',');
-    });
-    const csv = [header, ...dataLines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${exportFileName}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+
+      let rowsForExport = sortedRows;
+      if (serverSide && typeof exportAllFetcher === 'function') {
+        // Fetch all rows from server with current context
+        const allRows = await exportAllFetcher({
+          visibleColumns,
+          inferredColumns,
+          search,
+          columnFilters,
+        });
+        // Apply current filters/search client-side for consistency with UI
+        const s = (search || '').trim().toLowerCase();
+        const activeFilters = columnFilters || {};
+        const filterFn = (row) => {
+          for (const [k, val] of Object.entries(activeFilters)) {
+            if (!val) continue;
+            const cell = row?.[k];
+            const cellStr = cell == null ? '' : String(cell).toLowerCase();
+            if (!cellStr.includes(String(val).toLowerCase())) return false;
+          }
+          if (!s) return true;
+          const colsToScan = (visibleColumns.length ? visibleColumns : inferredColumns);
+          return colsToScan.some((c) => {
+            const cell = row?.[c.key];
+            if (cell == null) return false;
+            return String(cell).toLowerCase().includes(s);
+          });
+        };
+        rowsForExport = (allRows || []).filter(filterFn);
+      }
+
+      const dataLines = (rowsForExport || []).map((row) =>
+        cols
+          .map((c) => {
+            const raw = row?.[c.key];
+            const str = raw == null ? '' : String(raw);
+            const needsQuote = /[",\n]/.test(str);
+            const escaped = str.replace(/"/g, '""');
+            return needsQuote ? `"${escaped}"` : escaped;
+          })
+          .join(',')
+      );
+      const csv = [header, ...dataLines].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${exportFileName}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-4 w-full">
-        {/* Mobile loading cards */}
-        <div className="grid gap-3 md:hidden max-h-[70vh] overflow-y-auto">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
-              <div className="flex justify-between items-start mb-3">
-                <div className="h-4 bg-gray-200 rounded w-24"></div>
-                <div className="h-3 bg-gray-200 rounded w-16"></div>
-              </div>
-              <div className="space-y-2">
-                <div className="h-3 bg-gray-200 rounded w-full"></div>
-                <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        {/* Desktop loading table */}
-        <div className="hidden md:block bg-white rounded-2xl border border-gray-100 w-full max-w-full max-h-[70vh]">
-          <div className="overflow-auto max-w-full max-h-[70vh]">
-            <table className="w-max min-w-full">
-              <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
-                <tr className="divide-x divide-gray-200">
-                  {inferredColumns.length > 0 ? inferredColumns.map((col) => (
-                    <th key={col.key} className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap min-w-[120px] animate-pulse">
-                      <div className="h-3 bg-gray-300 rounded w-20"></div>
-                    </th>
-                  )) : [1, 2, 3, 4, 5, 6, 7].map((i) => (
-                    <th key={i} className="px-3 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap min-w-[120px] animate-pulse">
-                      <div className="h-3 bg-gray-300 rounded w-20"></div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((i) => (
-                  <tr key={i} className="divide-x divide-gray-100 animate-pulse">
-                    {(inferredColumns.length > 0 ? inferredColumns : [1, 2, 3, 4, 5, 6, 7]).map((col, j) => (
-                      <td key={j} className="px-3 py-3 text-sm max-w-[200px]">
-                        <div className="h-4 bg-gray-200 rounded w-full"></div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Note: we intentionally do NOT early-return on loading to keep the header controls (including search input) mounted,
+  // which preserves input focus while data is fetching.
 
   if (error) {
     return (
@@ -289,7 +279,14 @@ const DataTable = ({
       {(showSearchControl || enableExport || showFilterControl) && (
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           {/* Left spacer (kept empty to push controls to the right) */}
-          <div className="hidden md:block" />
+          <div className="hidden md:flex items-center gap-2">
+            {loading && (
+              <div className="text-xs text-gray-500 flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                Loading...
+              </div>
+            )}
+          </div>
           {/* Right controls: export then search (search on far right) */}
           <div className="flex items-center gap-2 md:ml-auto md:justify-end w-full">
             {showFilterControl && (
@@ -315,10 +312,11 @@ const DataTable = ({
               <button
                 type="button"
                 className="px-3 py-2 border rounded text-sm hover:bg-gray-50"
-                onClick={downloadCSV}
+                onClick={handleExport}
                 title="Export visible columns to CSV"
+                disabled={exporting}
               >
-                Export CSV
+                {exporting ? 'Exporting…' : 'Export CSV'}
               </button>
             )}
             {showSearchControl && (

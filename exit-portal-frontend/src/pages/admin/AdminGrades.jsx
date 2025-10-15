@@ -26,6 +26,9 @@ const AdminGrades = () => {
   const [error, setError] = useState('');
   const [studentId, setStudentId] = useState('');
   const [category, setCategory] = useState('');
+  // Search: input vs debounced server param
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const load = async (opts = {}) => {
     try {
@@ -46,6 +49,7 @@ const AdminGrades = () => {
       }
       if (sId && sId.trim()) params.append('studentId', sId.trim());
       if (cat && cat.trim()) params.append('category', cat.trim());
+      if (debouncedSearch && debouncedSearch.trim()) params.append('q', debouncedSearch.trim());
       params.append('page', String(p));
       params.append('size', String(sz));
       const res = await axios.get(`${base}?${params.toString()}`, { withCredentials: true });
@@ -73,6 +77,23 @@ const AdminGrades = () => {
     load({ studentId: sId, category: cat, page: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, location.search, programId]);
+
+  // Debounce search input to minimize refetch churn
+  useEffect(() => {
+    const h = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch((searchInput || '').trim());
+    }, 300);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  // Refetch when debounced search changes
+  useEffect(() => {
+    if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) return;
+    load({ page: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
   const columns = useMemo(() => ([
     { key: 'studentId', header: 'Student ID' },
     { key: 'courseCode', header: 'Course Code' },
@@ -108,12 +129,39 @@ const AdminGrades = () => {
         loading={loading}
         error={error}
         emptyText={loading ? '' : (error || 'No grades found')}
-        // UI enhancements
-        enableSearch={false}
-        enableColumnFilters={false}
+        // Search + Export (server-side)
+        defaultSearch={searchInput}
+        onSearchChange={(val) => setSearchInput(val)}
         enableColumnVisibility
         enableExport
         exportFileName="grades"
+        exportAllFetcher={async () => {
+          const all = [];
+          const exportSize = 1000;
+          let pageIdx = 0;
+          while (true) {
+            const params = new URLSearchParams();
+            if (user?.userType === 'SUPER_ADMIN' && programId) {
+              params.append('programId', String(programId));
+            } else if (user?.userType === 'ADMIN' && user?.programId) {
+              params.append('programId', String(user.programId));
+            }
+            if (studentId && studentId.trim()) params.append('studentId', studentId.trim());
+            if (category && category.trim()) params.append('category', category.trim());
+            if (debouncedSearch && debouncedSearch.trim()) params.append('q', debouncedSearch.trim());
+            params.append('page', String(pageIdx));
+            params.append('size', String(exportSize));
+            const url = `${config.backendUrl}/api/v1/admin/data/grades/paged?${params.toString()}`;
+            const res = await axios.get(url, { withCredentials: true });
+            const data = res.data || {};
+            const content = Array.isArray(data.content) ? data.content : [];
+            all.push(...content);
+            const tp = Number.isFinite(data.totalPages) ? data.totalPages : 0;
+            pageIdx += 1;
+            if (pageIdx >= tp || !content.length) break;
+          }
+          return all;
+        }}
       />
     </div>
   );

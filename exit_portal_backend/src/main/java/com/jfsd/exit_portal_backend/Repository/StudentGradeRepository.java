@@ -85,6 +85,28 @@ public interface StudentGradeRepository extends JpaRepository<StudentGrade, Long
     @Query("SELECT COUNT(DISTINCT sg.student.studentId) FROM StudentGrade sg JOIN sg.course c JOIN sg.student s JOIN s.program p WHERE LOWER(c.courseCode) = LOWER(:courseCode) AND p.programId = :programId")
     long countDistinctStudentsByCourseAndProgram(@Param("courseCode") String courseCode, @Param("programId") Long programId);
 
+    // JPQL pageable search across common fields (program, student, category, course, grade, term, promotion)
+    @Query("SELECT sg FROM StudentGrade sg JOIN sg.student s LEFT JOIN s.program p LEFT JOIN sg.course c " +
+           "WHERE (:programId IS NULL OR p.programId = :programId) " +
+           "AND (:studentId IS NULL OR :studentId = '' OR s.studentId = :studentId) " +
+           "AND (:category IS NULL OR :category = '' OR sg.category = :category) " +
+           "AND (:q IS NULL OR :q = '' OR " +
+           "     LOWER(s.studentId) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(c.courseCode,'')) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(c.courseTitle,'')) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(sg.category,'')) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(sg.grade,'')) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(sg.promotion,'')) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(sg.year,'')) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "     LOWER(COALESCE(sg.semester,'')) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           ")")
+    Page<StudentGrade> searchPaged(
+            @Param("programId") Long programId,
+            @Param("studentId") String studentId,
+            @Param("category") String category,
+            @Param("q") String q,
+            Pageable pageable);
+
     // ===== Term-wise promotion counts (for trend charts) =====
     @Query("SELECT COALESCE(sg.year,'NA') AS yr, COALESCE(sg.semester,'NA') AS sem,\n" +
            "       SUM(CASE WHEN UPPER(COALESCE(sg.promotion,'NA')) = 'P' THEN 1 ELSE 0 END) AS passCnt,\n" +

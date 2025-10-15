@@ -35,6 +35,26 @@ const AdminStudentCategoryMatrix = () => {
   const [error, setError] = useState('');
   const [matrix, setMatrix] = useState({ categories: [], rows: [] });
   const [mode, setMode] = useState('courses'); // 'courses' | 'credits'
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(50);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  // Search: input vs debounced term used for server fetch (mirror of AdminStudents debounce style)
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search to prevent refetch on every keystroke
+  useEffect(() => {
+    const h = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch((searchInput || '').trim());
+    }, 300);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
   // Determine effective programId like other admin pages
   const urlParams = new URLSearchParams(location.search);
@@ -60,8 +80,9 @@ const AdminStudentCategoryMatrix = () => {
       try {
         setLoading(true);
         const effectiveProgramId = getEffectiveProgramId();
-        let url = `${config.backendUrl}/api/v1/admin/insights/student-category-matrix`;
-        if (effectiveProgramId) url += `?programId=${encodeURIComponent(String(effectiveProgramId))}`;
+        let url = `${config.backendUrl}/api/v1/admin/insights/student-category-matrix/paged?page=${encodeURIComponent(String(page))}&size=${encodeURIComponent(String(size))}`;
+        if (effectiveProgramId) url += `&programId=${encodeURIComponent(String(effectiveProgramId))}`;
+        if (debouncedSearch) url += `&q=${encodeURIComponent(debouncedSearch)}`;
         const res = await axios.get(url, { withCredentials: true });
         if (cancelled) return;
         const payload = res.data || { categories: [], rows: [] };
@@ -70,6 +91,11 @@ const AdminStudentCategoryMatrix = () => {
           categories: Array.isArray(payload.categories) ? payload.categories : [],
           rows: Array.isArray(payload.rows) ? payload.rows : [],
         });
+        // pagination meta
+        setTotalPages(typeof payload.totalPages === 'number' ? payload.totalPages : 0);
+        setTotalElements(typeof payload.totalElements === 'number' ? payload.totalElements : 0);
+        setHasNext(Boolean(payload.hasNext));
+        setHasPrevious(Boolean(payload.hasPrevious));
       } catch (e) {
         if (!cancelled) setError('Failed to load student-category matrix');
       } finally {
@@ -79,7 +105,7 @@ const AdminStudentCategoryMatrix = () => {
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, programId]);
+  }, [user, programId, page, size, debouncedSearch]);
 
   const headerProgramCode = programInfo?.code || null;
 
@@ -115,16 +141,7 @@ const AdminStudentCategoryMatrix = () => {
     });
   }, [matrix.rows, matrix.categories, mode]);
 
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-900 mx-auto" />
-          <p className="mt-4 text-gray-600">Loading matrix...</p>
-        </div>
-      </div>
-    );
-  }
+  // Note: do not return a full-screen loader here; keep table mounted to preserve input focus
 
   if (error) {
     return <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4">{error}</div>;
@@ -137,17 +154,65 @@ const AdminStudentCategoryMatrix = () => {
           <h2 className="text-2xl font-bold text-gray-900">{headerProgramCode ? `${headerProgramCode} - Student Category Records` : 'Student Category Records'}</h2>
           <p className="text-sm text-gray-600">Per-student completion vs minimums across all categories for the selected program.</p>
         </div>
-        <Toggle value={mode} onChange={setMode} />
+        <div className="flex items-center gap-3">
+          <Toggle value={mode} onChange={setMode} />
+        </div>
       </div>
 
       <DataTable
         columns={columns}
         rows={rows}
-        loading={false}
+        loading={loading}
         error={error}
         emptyText="No records found"
         exportFileName="student_category_records"
         cardTitleKey="studentId"
+        serverSide={true}
+        page={page}
+        size={size}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        onPageChange={(p) => setPage(p)}
+        onSizeChange={(val) => { setPage(0); setSize(val); }}
+        defaultSearch={searchInput}
+        onSearchChange={(val) => { setSearchInput(val); }}
+        exportAllFetcher={async () => {
+          // Fetch all pages server-side and map to table rows according to current mode and categories
+          const effectiveProgramId = getEffectiveProgramId();
+          const exportSize = 1000;
+          let pageIdx = 0;
+          const allRows = [];
+          const cats = Array.isArray(matrix.categories) ? [...matrix.categories] : [];
+          while (true) {
+            let url = `${config.backendUrl}/api/v1/admin/insights/student-category-matrix/paged?page=${encodeURIComponent(String(pageIdx))}&size=${encodeURIComponent(String(exportSize))}`;
+            if (effectiveProgramId) url += `&programId=${encodeURIComponent(String(effectiveProgramId))}`;
+            if (debouncedSearch) url += `&q=${encodeURIComponent(debouncedSearch)}`;
+            const res = await axios.get(url, { withCredentials: true });
+            const payload = res.data || { categories: [], rows: [] };
+            const rowsPage = Array.isArray(payload.rows) ? payload.rows : [];
+            for (const r of rowsPage) {
+              const rowObj = { studentId: r.studentId, studentName: r.studentName };
+              cats.forEach((cat) => {
+                const cell = r?.cells?.[cat];
+                if (!cell) {
+                  rowObj[cat] = '';
+                } else if (mode === 'courses') {
+                  const a = cell.completedCourses ?? 0;
+                  const b = cell.minRequiredCourses ?? 0;
+                  rowObj[cat] = `${a}/${b}`;
+                } else {
+                  const a = Math.round((cell.completedCredits ?? 0) * 10) / 10;
+                  const b = Math.round((cell.minRequiredCredits ?? 0) * 10) / 10;
+                  rowObj[cat] = `${a}/${b}`;
+                }
+              });
+              allRows.push(rowObj);
+            }
+            if (!payload.hasNext) break;
+            pageIdx += 1;
+          }
+          return allRows;
+        }}
       />
     </div>
   );

@@ -205,6 +205,26 @@ public class AdminInsightsController {
         return ResponseEntity.ok(adminInsightsService.getStudentCategoryMatrix(effectiveProgramId));
     }
 
+    // Paged Student-Category matrix to prevent OOM on large datasets
+    @GetMapping("/insights/student-category-matrix/paged")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getStudentCategoryMatrixPaged(
+            @RequestParam(value = "programId", required = false) Long requestProgramId,
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size,
+            HttpServletRequest request
+    ) {
+        String jwt = getJwtFromRequest(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "No JWT token found"));
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        Long userProgramId = jwtUtil.getProgramIdFromJwtToken(jwt);
+        Long effectiveProgramId = "SUPER_ADMIN".equals(userType) ? requestProgramId : userProgramId;
+        return ResponseEntity.ok(adminInsightsService.getStudentCategoryMatrixPaged(effectiveProgramId, q, Math.max(0, page), Math.max(1, size)));
+    }
+
     // ===== Data Explorer Endpoints =====
     @GetMapping("/data/students")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
@@ -251,9 +271,10 @@ public class AdminInsightsController {
             @RequestParam(value = "programId", required = false) Long programId,
             @RequestParam(value = "studentId", required = false) String studentId,
             @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "q", required = false) String q,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "25") int size) {
-        return ResponseEntity.ok(adminInsightsService.listGradesPaged(programId, studentId, category, page, size));
+        return ResponseEntity.ok(adminInsightsService.listGradesPaged(programId, studentId, category, q, page, size));
     }
 
     @GetMapping("/data/progress")
@@ -262,6 +283,18 @@ public class AdminInsightsController {
             @RequestParam(value = "programId", required = false) Long programId,
             @RequestParam(value = "studentId", required = false) String studentId) {
         return ResponseEntity.ok(adminInsightsService.listProgress(programId, studentId));
+    }
+
+    // Paginated progress endpoint
+    @GetMapping("/data/progress/paged")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> listProgressPaged(
+            @RequestParam(value = "programId", required = false) Long programId,
+            @RequestParam(value = "studentId", required = false) String studentId,
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "25") int size) {
+        return ResponseEntity.ok(adminInsightsService.listProgressPaged(programId, studentId, q, page, size));
     }
 
     // Courses in a category
