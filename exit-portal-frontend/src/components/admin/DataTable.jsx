@@ -265,6 +265,20 @@ const DataTable = ({
   }
 
   if (!rows || rows.length === 0) {
+    if (loading) {
+      return (
+        <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
+          <div className="flex items-center justify-center mb-3">
+            <svg className="animate-spin h-6 w-6 text-red-600 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span className="text-gray-700 text-sm font-medium">Loading…</span>
+          </div>
+          <div className="text-gray-500 text-xs">Please wait while we load your data</div>
+        </div>
+      );
+    }
     return (
       <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
         <div className="text-gray-400 text-4xl mb-4">📊</div>
