@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -21,11 +22,13 @@ public class NaturalLanguageQueryService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Value("${gemini.api.key:}")
-    private String geminiApiKey;
+    @Value("${groq.api.key:}")
+    private String groqApiKey;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    @Value("${groq.chat.model:openai/gpt-oss-120b}")
+    private String groqChatModel;
     
     // Cache for common queries and patterns to reduce API calls
     private final Map<String, String> queryCache = new HashMap<>();
@@ -35,8 +38,8 @@ public class NaturalLanguageQueryService {
     // Rate limiting to prevent quota exhaustion
     private long lastApiCall = 0;
     private int apiCallsToday = 0;
-    private final int MAX_API_CALLS_PER_DAY = 40; // Leave buffer from 50 limit
-    private final long MIN_API_CALL_INTERVAL = 2000; // 2 seconds between calls
+    private final int MAX_API_CALLS_PER_DAY = 1000; // relaxed internal throttle
+    private final long MIN_API_CALL_INTERVAL = 200; // relaxed interval between calls
     
     // Initialize common patterns that don't need AI
     {
@@ -203,6 +206,12 @@ public class NaturalLanguageQueryService {
             * Completed courses contribute to completed counts/credits per category.
             * Registered (promotion 'R') courses indicate progress toward fulfilling remaining requirements but are not yet counted as completed.
             * Missing any category requirement keeps the overall graduation status as incomplete.
+        
+        CGPA calculation (use this rule when asked for CGPA):
+        - Consider only passed courses with non-null grade points: student_grades.promotion = 'P' AND student_grades.grade_point IS NOT NULL
+        - Join student_grades (sg) with courses (c) on sg.course_id = c.course_id
+        - Compute: cgpa = ROUND(SUM(sg.grade_point * c.course_credits) / SUM(c.course_credits), 4)
+        - For per-student CGPA, GROUP BY s.student_id, s.student_name after joining students (s)
         """;
 
     private static final Pattern FORBIDDEN_PATTERNS = Pattern.compile(
@@ -210,8 +219,8 @@ public class NaturalLanguageQueryService {
     );
 
     public Map<String, Object> processNaturalLanguageQuery(String naturalLanguageQuery) throws Exception {
-        if (geminiApiKey == null || geminiApiKey.trim().isEmpty()) {
-            throw new IllegalStateException("Gemini API key not configured");
+        if (groqApiKey == null || groqApiKey.trim().isEmpty()) {
+            throw new IllegalStateException("GROQ API key not configured");
         }
 
         String queryKey = naturalLanguageQuery.toLowerCase().trim();
@@ -491,6 +500,13 @@ public class NaturalLanguageQueryService {
             - use lower() for text comparisons and like with wildcards for partial matches.
             - handle null values correctly.
             - return only the sql query, no explanations.
+            
+            text output policy (important):
+            - if the user's question expects a textual explanation rather than only a plain table, produce a single select that returns a short explanation as a constant text column, for example:
+              select 'short explanation here' as message;
+            - if both explanation and tabular data are useful, include the explanation as the first column using a subquery wrapper, for example:
+              select 'short explanation here' as message, t.* from ( <your main data query> ) t;
+            - keep the explanation concise (one short sentence). always stay within select/with/where/group by/having/order by/limit.
             
             internal reasoning steps (perform silently, do not output):
             1) ambiguity check: if terms are vague, infer the most reasonable interpretation based on provided context values and schema; do not ask the user.
@@ -947,16 +963,12 @@ public class NaturalLanguageQueryService {
         
         return true;
     }
-
-    
     private String callGeminiAPI(String inputPrompt, String model, String type) throws Exception {
         // RATE LIMITING: Check if we've exceeded daily quota or need to wait
         long currentTime = System.currentTimeMillis();
-        
         if (apiCallsToday >= MAX_API_CALLS_PER_DAY) {
-            throw new IllegalStateException("Daily API quota limit reached (" + MAX_API_CALLS_PER_DAY + " calls). Please try again tomorrow or upgrade your plan.");
+            throw new IllegalStateException("Daily API quota limit reached (" + MAX_API_CALLS_PER_DAY + ") calls). Please try again tomorrow or upgrade your plan.");
         }
-        
         if (currentTime - lastApiCall < MIN_API_CALL_INTERVAL) {
             try {
                 Thread.sleep(MIN_API_CALL_INTERVAL - (currentTime - lastApiCall));
@@ -964,9 +976,8 @@ public class NaturalLanguageQueryService {
                 Thread.currentThread().interrupt();
             }
         }
-        
+
         String finalPrompt;
-        
         if ("clarification".equals(type)) {
             finalPrompt = inputPrompt; // Use the clarification prompt as-is
         } else {
@@ -989,56 +1000,78 @@ public class NaturalLanguageQueryService {
                 """, SCHEMA_CONTEXT, inputPrompt);
         }
 
-        String geminiUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + geminiApiKey;
-        
+        String groqUrl = "https://api.groq.com/openai/v1/chat/completions";
         try {
             Map<String, Object> requestBody = new HashMap<>();
-            Map<String, Object> content = new HashMap<>();
-            Map<String, String> part = new HashMap<>();
-            part.put("text", finalPrompt);
-            content.put("parts", Collections.singletonList(part));
-            requestBody.put("contents", Collections.singletonList(content));
+            // Use configured chat model, ignore the 'model' param to avoid invalid ids from legacy callers
+            requestBody.put("model", groqChatModel);
+            requestBody.put("temperature", 0.2);
+            List<Map<String, String>> messages = new java.util.ArrayList<>();
+            messages.add(Map.of("role", "user", "content", finalPrompt));
+            requestBody.put("messages", messages);
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("Content-Type", "application/json");
-            
+            headers.set("Authorization", "Bearer " + groqApiKey);
+
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<String> response = restTemplate.exchange(geminiUrl, HttpMethod.POST, request, String.class);
-            
+            ResponseEntity<String> response = restTemplate.exchange(groqUrl, HttpMethod.POST, request, String.class);
+
             // Update rate limiting counters on successful call
             lastApiCall = System.currentTimeMillis();
             apiCallsToday++;
-            
+
             JsonNode jsonResponse = objectMapper.readTree(response.getBody());
-            String sqlQuery = jsonResponse.path("candidates").get(0)
-                .path("content").path("parts").get(0).path("text").asText().trim();
-            
-            // Clean up the response - remove markdown formatting if present
+            String sqlQuery = null;
+            // Chat Completions primary parse
+            JsonNode choices = jsonResponse.path("choices");
+            if (choices.isArray() && choices.size() > 0) {
+                sqlQuery = choices.get(0).path("message").path("content").asText("");
+            }
+            // Fallback to output_text if present (some Groq variants may include it)
+            if (sqlQuery == null || sqlQuery.isBlank()) {
+                if (jsonResponse.hasNonNull("output_text")) {
+                    sqlQuery = jsonResponse.path("output_text").asText();
+                }
+            }
+            if (sqlQuery == null) {
+                throw new IllegalStateException("GROQ response did not contain text output");
+            }
             sqlQuery = sqlQuery.replaceAll("```sql", "").replaceAll("```", "").trim();
-            
+            // If any leading prose exists, trim to the first occurrence of SELECT/WITH
+            String lower = sqlQuery.toLowerCase(java.util.Locale.ROOT);
+            int iSel = lower.indexOf("select");
+            int iWith = lower.indexOf("with");
+            int start = -1;
+            if (iSel >= 0 && iWith >= 0) start = Math.min(iSel, iWith);
+            else start = Math.max(iSel, iWith);
+            if (start > 0) {
+                sqlQuery = sqlQuery.substring(start).trim();
+            }
             return sqlQuery;
-            
+
+        } catch (HttpStatusCodeException e) {
+            throw e;
         } catch (Exception e) {
-            // Check if this is a quota error
             if (isQuotaExceeded(e)) {
                 apiCallsToday = MAX_API_CALLS_PER_DAY; // Mark as quota exceeded
-                throw new IllegalStateException("Gemini API quota exceeded. Error: " + e.getMessage() + 
-                    "\\n\\nOptimization suggestions:\\n" +
-                    "- Use simpler queries like 'show all students', 'list courses'\\n" +
-                    "- Wait a few minutes before trying again\\n" +
-                    "- Consider upgrading your Gemini API plan for higher limits");
+                throw new IllegalStateException("GROQ API quota exceeded or rate limited. Error: " + e.getMessage() +
+                        "\n\nOptimization suggestions:\n" +
+                        "- Use simpler queries like 'show all students', 'list courses'\n" +
+                        "- Wait a few minutes before trying again\n" +
+                        "- Consider upgrading your GROQ plan for higher limits");
             }
             throw e;
         }
     }
-    
+
     private boolean isQuotaExceeded(Exception e) {
         String message = e.getMessage();
         return message != null && (
-            message.contains("429") || 
-            message.contains("quota") || 
-            message.contains("RESOURCE_EXHAUSTED") ||
-            message.contains("Too Many Requests")
+                message.contains("429") ||
+                message.contains("quota") ||
+                message.contains("RESOURCE_EXHAUSTED") ||
+                message.contains("Too Many Requests")
         );
     }
 
