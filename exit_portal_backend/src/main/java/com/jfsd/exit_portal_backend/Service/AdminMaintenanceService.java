@@ -43,6 +43,12 @@ public class AdminMaintenanceService {
             programId
         );
 
+        // 2a) password reset tokens for students in program (avoid FK violations when deleting students)
+        jdbcTemplate.update(
+            "DELETE FROM password_reset_token WHERE student_id IN (SELECT student_id FROM students WHERE program_id = ?)",
+            programId
+        );
+
         // 3) students by program_id
         jdbcTemplate.update("DELETE FROM students WHERE program_id = ?", programId);
 

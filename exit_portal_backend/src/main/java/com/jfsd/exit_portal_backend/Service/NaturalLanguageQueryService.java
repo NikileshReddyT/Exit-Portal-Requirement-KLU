@@ -210,7 +210,7 @@ public class NaturalLanguageQueryService {
         CGPA calculation (use this rule when asked for CGPA):
         - Consider only passed courses with non-null grade points: student_grades.promotion = 'P' AND student_grades.grade_point IS NOT NULL
         - Join student_grades (sg) with courses (c) on sg.course_id = c.course_id
-        - Compute: cgpa = ROUND(SUM(sg.grade_point * c.course_credits) / SUM(c.course_credits), 4)
+        - Compute: cgpa = ROUND(SUM(sg.grade_point * c.course_credits) / SUM(c.course_credits), 2)
         - For per-student CGPA, GROUP BY s.student_id, s.student_name after joining students (s)
         """;
 
