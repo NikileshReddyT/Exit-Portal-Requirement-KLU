@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,8 @@ public class StudentCategoryProgressService {
     private StudentCategoryProgressRepository progressRepository;
     
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+    @Autowired
     private StudentGradeRepository studentGradeRepository;
     
     @Autowired
@@ -40,24 +43,70 @@ public class StudentCategoryProgressService {
 
     @Transactional
     public void calculateAndUpdateProgressForStudents(Set<String> universityIds) {
-        if (universityIds == null || universityIds.isEmpty()) {
-            return;
-        }
+        if (universityIds == null || universityIds.isEmpty()) return;
 
         long tStart = System.currentTimeMillis();
         log.info("Recompute(SQL): start for {} students", universityIds.size());
 
-        // Phase 1: delete existing
+        // Stage IDs into TEMP table with PK (sql_require_primary_key safety)
+        jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_recalc_ids");
+        jdbcTemplate.execute("CREATE TEMPORARY TABLE tmp_recalc_ids (" +
+                "university_id VARCHAR(64) NOT NULL PRIMARY KEY" +
+                ") ENGINE=InnoDB");
+        final String insIds = "INSERT INTO tmp_recalc_ids (university_id) VALUES (?)";
+        jdbcTemplate.batchUpdate(insIds, universityIds.stream().toList(), universityIds.size(), (ps, id) -> ps.setString(1, id));
+
+        // Phase 1: delete existing rows via JOIN (faster than large IN list)
         long tDelStart = System.currentTimeMillis();
-        progressRepository.deleteByUniversityIdIn(universityIds);
+        jdbcTemplate.update("DELETE scp FROM student_category_progress scp JOIN tmp_recalc_ids t ON scp.university_id = t.university_id");
         long tDelEnd = System.currentTimeMillis();
         log.info("Recompute(SQL): deleted existing progress for {} students in {} ms", universityIds.size(), (tDelEnd - tDelStart));
 
-        // Phase 2: single INSERT ... SELECT to rebuild all rows
+        // Phase 2: single INSERT ... SELECT using tmp ids in both outer and inner queries
         long tInsStart = System.currentTimeMillis();
-        progressRepository.insertProgressForUniversityIds(universityIds);
+        // Workaround MySQL limitation: can't reopen the same temp table in a subquery.
+        // Duplicate the id list into a second temp table for the inner aggregate.
+        jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_recalc_ids2");
+        jdbcTemplate.execute("CREATE TEMPORARY TABLE tmp_recalc_ids2 (university_id VARCHAR(64) NOT NULL PRIMARY KEY) ENGINE=InnoDB");
+        jdbcTemplate.update("INSERT INTO tmp_recalc_ids2 (university_id) SELECT university_id FROM tmp_recalc_ids");
+        String insertSql =
+                "INSERT INTO student_category_progress (\n" +
+                "  university_id, student_name, category_name,\n" +
+                "  min_required_courses, min_required_credits,\n" +
+                "  completed_courses, completed_credits, category_id, program_id\n" +
+                ")\n" +
+                "SELECT\n" +
+                "  st.student_id AS university_id,\n" +
+                "  st.student_name,\n" +
+                "  c.category_name AS category_name,\n" +
+                "  COALESCE(pcr.min_courses, 0) AS min_required_courses,\n" +
+                "  COALESCE(pcr.min_credits, 0) AS min_required_credits,\n" +
+                "  COALESCE(a.completed_courses, 0)  AS completed_courses,\n" +
+                "  COALESCE(a.completed_credits, 0) AS completed_credits,\n" +
+                "  c.category_id,\n" +
+                "  st.program_id\n" +
+                "FROM students st\n" +
+                "JOIN tmp_recalc_ids t ON t.university_id = st.student_id\n" +
+                "JOIN categories c ON c.program_id = st.program_id\n" +
+                "LEFT JOIN program_category_requirement pcr ON pcr.program_id = st.program_id AND pcr.category_id = c.category_id\n" +
+                "LEFT JOIN (\n" +
+                "  SELECT sg.university_id, pcc.category_id, COUNT(*) AS completed_courses, SUM(co.course_credits) AS completed_credits\n" +
+                "  FROM tmp_recalc_ids2 t2\n" +
+                "  JOIN student_grades sg ON sg.university_id = t2.university_id\n" +
+                "  JOIN courses co ON co.course_id = sg.course_id\n" +
+                "  JOIN program_course_category pcc ON pcc.course_id = co.course_id\n" +
+                "  JOIN students st2 ON st2.student_id = sg.university_id\n" +
+                "  WHERE sg.promotion = 'P' AND pcc.program_id = st2.program_id\n" +
+                "  GROUP BY sg.university_id, pcc.category_id\n" +
+                ") a ON a.university_id = st.student_id AND a.category_id = c.category_id\n" +
+                "WHERE st.program_id IS NOT NULL";
+        jdbcTemplate.update(insertSql);
+
         long tInsEnd = System.currentTimeMillis();
         log.info("Recompute(SQL): inserted progress rows in {} ms", (tInsEnd - tInsStart));
+
+        jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_recalc_ids");
+        jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_recalc_ids2");
 
         long tEnd = System.currentTimeMillis();
         log.info("Recompute(SQL): completed for {} students in {} ms (delete:{}ms, insert:{}ms)",

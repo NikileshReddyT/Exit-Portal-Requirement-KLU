@@ -3,7 +3,6 @@ package com.jfsd.exit_portal_backend.Service;
 import com.jfsd.exit_portal_backend.Model.Courses;
 import com.jfsd.exit_portal_backend.Model.StudentGrade;
 import com.jfsd.exit_portal_backend.Repository.CoursesRepository;
-import com.jfsd.exit_portal_backend.Repository.StudentGradeRepository;
 import com.jfsd.exit_portal_backend.Model.Student;
 import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import com.jfsd.exit_portal_backend.Repository.ProgramCourseCategoryRepository;
@@ -18,6 +17,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DataAccessException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.persistence.EntityManager;
@@ -47,8 +49,49 @@ public class StudentGradeBatchImportService {
         }
     }
 
-    @Autowired
-    private StudentGradeRepository studentGradeRepository;
+    // Performance helper: ensure helpful non-unique indexes exist (safe no-op if already present)
+    private void ensurePerformanceIndexes() {
+        try {
+            Integer hasCourses = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='courses' AND INDEX_NAME='idx_courses_code'",
+                    Integer.class);
+            if (hasCourses == null || hasCourses == 0) {
+                jdbcTemplate.execute("ALTER TABLE courses ADD INDEX idx_courses_code (course_code)");
+            }
+        } catch (Exception ignored) {}
+        try {
+            Integer hasPcc = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='program_course_category' AND INDEX_NAME='idx_pcc_course_program'",
+                    Integer.class);
+            if (hasPcc == null || hasPcc == 0) {
+                jdbcTemplate.execute("ALTER TABLE program_course_category ADD INDEX idx_pcc_course_program (course_id, program_id)");
+            }
+        } catch (Exception ignored) {}
+        try {
+            Integer hasScpUid = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='student_category_progress' AND INDEX_NAME='idx_scp_uid'",
+                    Integer.class);
+            if (hasScpUid == null || hasScpUid == 0) {
+                jdbcTemplate.execute("ALTER TABLE student_category_progress ADD INDEX idx_scp_uid (university_id)");
+            }
+        } catch (Exception ignored) {}
+        // student_grades unique index is managed by ensureUniqueIndexForUpsert(); avoid adding overlapping non-unique index
+    }
+
+    // Fail-fast check for read-only DB to avoid long processing before erroring
+    private boolean isDatabaseReadOnly() {
+        try {
+            Map<String, Object> v = jdbcTemplate.queryForMap("SELECT @@global.read_only AS r, @@global.super_read_only AS sr");
+            Object r = v.get("r");
+            Object sr = v.get("sr");
+            return (r != null && ("1".equals(r.toString()) || "ON".equalsIgnoreCase(r.toString()))) ||
+                   (sr != null && ("1".equals(sr.toString()) || "ON".equalsIgnoreCase(sr.toString())));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    
 
     @Autowired
     private CoursesRepository coursesRepository;
@@ -77,14 +120,30 @@ public class StudentGradeBatchImportService {
     @Autowired
     private ProgramRepository programRepository;
 
-    private static final int BATCH_SIZE = 3000; // larger batches for fewer DB round-trips
+    private static final int BATCH_SIZE = 20000; // larger batches for fewer DB round-trips
 
+    @Transactional
     public List<String> importResultsCsv(MultipartFile file, String programCode, Double defaultCredits) {
         List<String> messages = new ArrayList<>();
+        long _svcStartMs = System.currentTimeMillis();
+        log.info("Results import started at epoch(ms)={}", _svcStartMs);
         if (file == null || file.isEmpty()) {
             messages.add("No file uploaded.");
+            long _svcEndMs = System.currentTimeMillis();
+            double _durSec = (_svcEndMs - _svcStartMs) / 1000.0;
+            log.info("Results import finished at epoch(ms)={} duration(s)={}", _svcEndMs, String.format(java.util.Locale.ROOT, "%.3f", _durSec));
             return messages;
         }
+        // Fail fast if DB is read-only
+        if (isDatabaseReadOnly()) {
+            messages.add("Abort: Database is read-only (read_only/super_read_only enabled). Point DB_URL to the writer endpoint or disable read-only on the server.");
+            long _svcEndMs = System.currentTimeMillis();
+            double _durSec = (_svcEndMs - _svcStartMs) / 1000.0;
+            log.info("Results import finished at epoch(ms)={} duration(s)={}", _svcEndMs, String.format(java.util.Locale.ROOT, "%.3f", _durSec));
+            return messages;
+        }
+        // Ensure helpful indexes for fast joins
+        ensurePerformanceIndexes();
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
             List<String> lines = br.lines().collect(Collectors.toList());
@@ -166,6 +225,7 @@ public class StudentGradeBatchImportService {
             if (programCode != null && !programCode.trim().isEmpty()) {
                 programEntity = programRepository.findByCode(programCode.trim()).orElse(null);
             }
+            final Long programIdForOps = (programEntity != null ? programEntity.getProgramId() : null);
 
             // Preload existing grades for all students in the CSV for faster upsert
             Set<String> studentIds = lines.stream().skip(1)
@@ -176,7 +236,7 @@ public class StudentGradeBatchImportService {
                     .collect(Collectors.toSet());
             log.info("Unique students in Results CSV: {}", studentIds.size());
 
-            // Upsert Students: preload existing and create missing with BCrypt(studentId)
+            // Upsert Students: create any missing (password = BCrypt(studentId)), leave existing unchanged, and set program only if NULL
             Map<String, Student> existingStudents = studentRepository.findAllByStudentIdIn(studentIds)
                     .stream().collect(Collectors.toMap(Student::getStudentId, s -> s));
             // build name map from CSV second column if present
@@ -189,52 +249,53 @@ public class StudentGradeBatchImportService {
                     if (!id.isEmpty() && !name.isEmpty()) nameById.put(id, name);
                 }
             }
-            List<Student> toCreate = new ArrayList<>();
-            for (String id : studentIds) {
-                if (!existingStudents.containsKey(id)) {
-                    String name = nameById.getOrDefault(id, "");
-                    Student s = new Student(id, name, passwordEncoder.encode(id));
-                    if (programEntity != null) {
-                        s.setProgram(programEntity);
-                    }
-                    toCreate.add(s);
-                    existingStudents.put(id, s);
+            // Create missing only (compute hashes only for missing)
+            Set<String> toCreateIds = new java.util.HashSet<>(studentIds);
+            toCreateIds.removeAll(existingStudents.keySet());
+            final String insStudents = "INSERT IGNORE INTO students (student_id, student_name, password, program_id) VALUES (?, ?, ?, ?)";
+            if (!toCreateIds.isEmpty()) {
+                Map<String, String> hashedToCreate = hashPasswordsParallel(toCreateIds);
+                List<String> idList = new ArrayList<>(toCreateIds);
+                jdbcTemplate.batchUpdate(insStudents, idList, idList.size(), (ps, sid) -> {
+                    ps.setString(1, sid);
+                    ps.setString(2, nameById.getOrDefault(sid, ""));
+                    ps.setString(3, hashedToCreate.get(sid));
+                    ps.setObject(4, programIdForOps);
+                });
+            }
+            // Set program_id only for students with NULL (existing semantics)
+            if (programIdForOps != null && !studentIds.isEmpty()) {
+                final int CHUNK = 1000;
+                List<String> allIdsList = new ArrayList<>(studentIds);
+                for (int i = 0; i < allIdsList.size(); i += CHUNK) {
+                    List<String> chunk = allIdsList.subList(i, Math.min(i + CHUNK, allIdsList.size()));
+                    String placeholders = String.join(", ", java.util.Collections.nCopies(chunk.size(), "?"));
+                    String upd = "UPDATE students SET program_id=? WHERE program_id IS NULL AND student_id IN (" + placeholders + ")";
+                    jdbcTemplate.update(con -> {
+                        java.sql.PreparedStatement ps = con.prepareStatement(upd);
+                        int idx = 1;
+                        ps.setObject(idx++, programIdForOps);
+                        for (String s : chunk) ps.setString(idx++, s);
+                        return ps;
+                    });
                 }
             }
-            if (!toCreate.isEmpty()) {
-                studentRepository.saveAll(toCreate);
-            }
-            // Program-aware handling for existing students
+            // Build skip list for program mismatches (same semantics)
             Set<String> skipStudentIds = new HashSet<>();
-            List<Student> toUpdateProgram = new ArrayList<>();
             if (programEntity != null) {
                 for (String id : studentIds) {
                     Student s = existingStudents.get(id);
                     if (s == null) continue;
                     Program sp = s.getProgram();
-                    if (sp == null) {
-                        // bind student to selected program if currently unassigned
-                        s.setProgram(programEntity);
-                        toUpdateProgram.add(s);
-                    } else if (!Objects.equals(sp.getProgramId(), programEntity.getProgramId())) {
-                        // program mismatch: skip this student's updates for this import
+                    if (sp != null && !Objects.equals(sp.getProgramId(), programEntity.getProgramId())) {
                         skipStudentIds.add(id);
                     }
-                }
-                if (!toUpdateProgram.isEmpty()) {
-                    studentRepository.saveAll(toUpdateProgram);
                 }
                 if (!skipStudentIds.isEmpty()) {
                     messages.add("Skipped students due to program mismatch with " + programCode.trim() + ": " + String.join(", ", skipStudentIds));
                 }
             }
-            long tExistingFetchStart = System.nanoTime();
-            List<StudentGrade> existingGrades = studentGradeRepository.findByStudent_StudentIdIn(studentIds);
-            long tExistingFetchMs = (System.nanoTime() - tExistingFetchStart) / 1_000_000;
-            log.info("Preloaded existing grade rows: {} in {} ms", existingGrades.size(), tExistingFetchMs);
-            Map<String, StudentGrade> existingByKey = existingGrades.stream()
-                    .filter(g -> g.getCourse() != null && g.getCourse().getCourseCode() != null && g.getStudent() != null)
-                    .collect(Collectors.toMap(g -> g.getStudent().getStudentId() + "-" + norm(g.getCourse().getCourseCode()), g -> g, (a, b) -> a));
+            // Defer existing grade preload until after we know exactly which (uid, course) pairs are needed
             // Parse rows in parallel to build updates, logging every 10 rows
             AtomicInteger parsedRowCounter = new AtomicInteger(0);
             long tUpdatesStart = System.nanoTime();
@@ -243,7 +304,7 @@ public class StudentGradeBatchImportService {
                     .filter(row -> row.length > firstCourseCol && row[0] != null && !row[0].trim().isEmpty())
                     .flatMap(row -> {
                         int rowNum = parsedRowCounter.incrementAndGet();
-                        if (rowNum % 10 == 0) {
+                        if (rowNum % 10000 == 0) {
                             log.info("Parsed {} rows from Results CSV...", rowNum);
                         }
                         String universityId = row[0].trim();
@@ -285,6 +346,38 @@ public class StudentGradeBatchImportService {
             Set<String> createdKeys = new HashSet<>();
             Set<String> updatedKeys = new HashSet<>();
 
+            // Build distinct (uid, course_code) pairs and precompute which already exist via fast SQL
+            long tExistStart = System.nanoTime();
+            Set<String> distinctKeys = new HashSet<>();
+            for (ParsedUpdate u : updates) distinctKeys.add(u.universityId + "-" + u.courseCode);
+            jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_existing_check");
+            jdbcTemplate.execute("CREATE TEMPORARY TABLE tmp_existing_check (" +
+                    "university_id VARCHAR(64) NOT NULL, " +
+                    "course_code VARCHAR(50) NOT NULL, " +
+                    "PRIMARY KEY (university_id, course_code)" +
+                    ") ENGINE=InnoDB");
+            final String insExist = "INSERT INTO tmp_existing_check (university_id, course_code) VALUES (?, ?)";
+            List<String> dlist = new ArrayList<>(distinctKeys);
+            jdbcTemplate.batchUpdate(insExist, dlist, dlist.size(), (ps, key) -> {
+                int idx = key.indexOf('-');
+                ps.setString(1, key.substring(0, idx));
+                ps.setString(2, key.substring(idx + 1));
+            });
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT sg.university_id, UPPER(c.course_code) AS course_code " +
+                            "FROM student_grades sg " +
+                            "JOIN courses c ON c.course_id = sg.course_id " +
+                            "JOIN tmp_existing_check t ON t.university_id = sg.university_id AND t.course_code = UPPER(c.course_code)");
+            Set<String> existingKeys = new HashSet<>();
+            for (Map<String, Object> r : rows) {
+                String uid = Objects.toString(r.get("university_id"), "");
+                String code = norm(Objects.toString(r.get("course_code"), ""));
+                if (!uid.isEmpty() && !code.isEmpty()) existingKeys.add(uid + "-" + code);
+            }
+            jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_existing_check");
+            long tExistMs = (System.nanoTime() - tExistStart) / 1_000_000;
+            log.info("Existing key check complete: {} existing of {} pairs in {} ms", existingKeys.size(), distinctKeys.size(), tExistMs);
+
             long tAssembleStart = System.nanoTime();
             int assembled = 0;
             Set<String> affectedStudentIds = new HashSet<>();
@@ -297,23 +390,12 @@ public class StudentGradeBatchImportService {
                 String key = u.universityId + "-" + u.courseCode;
                 StudentGrade grade = upsertsByKey.get(key);
                 if (grade == null) {
-                    grade = existingByKey.get(key);
-                    if (grade == null) {
-                        grade = new StudentGrade();
-                        Student s = existingStudents.get(u.universityId);
-                        if (s == null) {
-                            s = new Student(u.universityId, nameById.getOrDefault(u.universityId, ""), passwordEncoder.encode(u.universityId));
-                            if (programEntity != null) {
-                                s.setProgram(programEntity);
-                            }
-                            s = studentRepository.save(s);
-                            existingStudents.put(u.universityId, s);
-                        }
-                        grade.setStudent(s);
-                        createdKeys.add(key);
-                    } else {
-                        updatedKeys.add(key);
-                    }
+                    boolean existed = existingKeys.contains(key);
+                    grade = new StudentGrade();
+                    Student s = existingStudents.get(u.universityId);
+                    if (s == null) { s = new Student(); s.setStudentId(u.universityId); }
+                    grade.setStudent(s);
+                    if (existed) updatedKeys.add(key); else createdKeys.add(key);
                 }
                 grade.setCourse(course);
 
@@ -356,6 +438,9 @@ public class StudentGradeBatchImportService {
             // Ensure unique index exists so upsert updates instead of duplicating
             ensureUniqueIndexForUpsert();
 
+            // Students were ensured above; no redundant ensure-exist needed here
+
+            // Bulk upsert in the current transaction (students are flushed above)
             int totalBatches = (toSave.size() + BATCH_SIZE - 1) / BATCH_SIZE;
             log.info("Starting native bulk upsert for {} rows in {} batches (batchSize={})", toSave.size(), totalBatches, BATCH_SIZE);
             int batchIndex = 0;
@@ -380,26 +465,32 @@ public class StudentGradeBatchImportService {
             messages.add("Results CSV processed. Created: " + createdKeys.size() + ", Updated: " + updatedKeys.size());
             messages.add("Note: year/semester will be set after registrations upload.");
 
-            // Recompute category progress for affected students immediately after Results (Step 1)
-            // Recompute only for affected students
+            // Recompute category progress AFTER COMMIT to ensure Step 1 changes are visible
             Set<String> recomputeIds = new HashSet<>(affectedStudentIds);
             if (!recomputeIds.isEmpty()) {
-                new Thread(() -> {
-                    try {
-                        log.info("Starting category progress recompute for {} students after Results upload (Step 1)", recomputeIds.size());
-                        studentCategoryProgressService.calculateAndUpdateProgressForStudents(recomputeIds);
-                        log.info("Completed category progress recompute after Results upload (Step 1)");
-                    } catch (Exception ex) {
-                        log.error("Progress recalculation error after Results (Step 1): {}", ex.getMessage());
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        new Thread(() -> {
+                            try {
+                                log.info("Starting category progress recompute for {} students after Results upload (Step 1)", recomputeIds.size());
+                                studentCategoryProgressService.calculateAndUpdateProgressForStudents(recomputeIds);
+                                log.info("Completed category progress recompute after Results upload (Step 1)");
+                            } catch (Exception ex) {
+                                log.error("Progress recalculation error after Results (Step 1): {}", ex.getMessage());
+                            }
+                        }, "progress-recompute-after-results").start();
                     }
-                }, "progress-recompute-after-results").start();
+                });
             } else {
                 log.info("No affected students to recompute progress for after Results upload (Step 1)");
             }
         } catch (IOException e) {
             messages.add("Error reading file: " + e.getMessage());
         }
-
+        long _svcEndMs = System.currentTimeMillis();
+        double _durSec = (_svcEndMs - _svcStartMs) / 1000.0;
+        log.info("Results import finished at epoch(ms)={} duration(s)={}", _svcEndMs, String.format(java.util.Locale.ROOT, "%.3f", _durSec));
         return messages;
     }
 
@@ -486,12 +577,28 @@ public class StudentGradeBatchImportService {
         return counts;
     }
 
+    @Transactional
     public List<String> importRegistrationsCsv(MultipartFile file) {
         List<String> messages = new ArrayList<>();
+        long _svcStartMs = System.currentTimeMillis();
+        log.info("Registrations import started at epoch(ms)={}", _svcStartMs);
         if (file == null || file.isEmpty()) {
             messages.add("No file uploaded.");
+            long _svcEndMs = System.currentTimeMillis();
+            double _durSec = (_svcEndMs - _svcStartMs) / 1000.0;
+            log.info("Registrations import finished at epoch(ms)={} duration(s)={}", _svcEndMs, String.format(java.util.Locale.ROOT, "%.3f", _durSec));
             return messages;
         }
+        // Fail fast if DB is read-only
+        if (isDatabaseReadOnly()) {
+            messages.add("Abort: Database is read-only (read_only/super_read_only enabled). Point DB_URL to the writer endpoint or disable read-only on the server.");
+            long _svcEndMs = System.currentTimeMillis();
+            double _durSec = (_svcEndMs - _svcStartMs) / 1000.0;
+            log.info("Registrations import finished at epoch(ms)={} duration(s)={}", _svcEndMs, String.format(java.util.Locale.ROOT, "%.3f", _durSec));
+            return messages;
+        }
+        // Ensure helpful indexes for fast joins
+        ensurePerformanceIndexes();
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
             List<String> lines = br.lines().collect(Collectors.toList());
@@ -555,12 +662,8 @@ public class StudentGradeBatchImportService {
                 return messages;
             }
 
-            // preload existing grades for affected students
+            // affected student IDs
             Set<String> studentIds = latest.values().stream().map(r -> r.uid).collect(Collectors.toSet());
-            List<StudentGrade> existingGrades = studentGradeRepository.findByStudent_StudentIdIn(studentIds);
-            Map<String, StudentGrade> byKey = existingGrades.stream()
-                    .filter(g -> g.getCourse() != null && g.getCourse().getCourseCode() != null && g.getStudent() != null)
-                    .collect(Collectors.toMap(g -> g.getStudent().getStudentId() + "-" + norm(g.getCourse().getCourseCode()), g -> g, (a,b)->a));
 
             // preload courses
             Set<String> courseCodes = latest.values().stream().map(r -> r.code).collect(Collectors.toSet());
@@ -573,27 +676,42 @@ public class StudentGradeBatchImportService {
                     .filter(code -> !courseByCode.containsKey(code))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
-            // counts estimation (only consider known courses)
-            Set<String> latestKnownKeys = latest.values().stream()
-                    .filter(r -> courseByCode.containsKey(r.code))
-                    .map(r -> r.uid + "-" + r.code)
-                    .collect(Collectors.toSet());
-            long updatedCount = latestKnownKeys.stream().filter(byKey::containsKey).count();
-            long insertCount = latestKnownKeys.size() - updatedCount;
+            // counts computed after staging tmp table
+            final long[] counts = new long[2]; // [0]=updatedCount, [1]=insertCount
 
             TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
             txTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
             // Execute everything in one DB transaction/connection to keep TEMP table alive
             txTemplate.execute(status -> {
-                // 1) Upsert students in bulk (create missing like Step 1)
-                final String upsertStudentsSql = "INSERT INTO students (student_id, student_name, password) VALUES (?, ?, ?) " +
-                        "ON DUPLICATE KEY UPDATE student_name=VALUES(student_name)";
+                // 1) Create missing students only; update names separately to avoid hashing existing
                 List<String> allStudentIds = new ArrayList<>(studentIds);
-                jdbcTemplate.batchUpdate(upsertStudentsSql, allStudentIds, allStudentIds.size(), (ps, sid) -> {
-                    ps.setString(1, sid);
-                    ps.setString(2, nameById.getOrDefault(sid, ""));
-                    ps.setString(3, passwordEncoder.encode(sid));
+                java.util.Set<String> existingIdSet = new java.util.HashSet<>();
+                final int ID_CHUNK = 1000;
+                for (int i = 0; i < allStudentIds.size(); i += ID_CHUNK) {
+                    List<String> chunk = allStudentIds.subList(i, Math.min(i + ID_CHUNK, allStudentIds.size()));
+                    String placeholders = String.join(", ", java.util.Collections.nCopies(chunk.size(), "?"));
+                    String sel = "SELECT student_id FROM students WHERE student_id IN (" + placeholders + ")";
+                    existingIdSet.addAll(jdbcTemplate.query(sel, ps -> {
+                        int idx = 1; for (String s : chunk) ps.setString(idx++, s);
+                    }, (rs, rNum) -> rs.getString(1)));
+                }
+                java.util.Set<String> toCreateIds = new java.util.HashSet<>(studentIds);
+                toCreateIds.removeAll(existingIdSet);
+                if (!toCreateIds.isEmpty()) {
+                    Map<String, String> hashedMap = hashPasswordsParallel(toCreateIds);
+                    List<String> createList = new ArrayList<>(toCreateIds);
+                    final String insSql = "INSERT IGNORE INTO students (student_id, student_name, password) VALUES (?, ?, ?)";
+                    jdbcTemplate.batchUpdate(insSql, createList, createList.size(), (ps, sid) -> {
+                        ps.setString(1, sid);
+                        ps.setString(2, nameById.getOrDefault(sid, ""));
+                        ps.setString(3, hashedMap.get(sid));
+                    });
+                }
+                // Update names for all relevant students (no password hashing overhead)
+                jdbcTemplate.batchUpdate("UPDATE students SET student_name=? WHERE student_id=?", allStudentIds, allStudentIds.size(), (ps, sid) -> {
+                    ps.setString(1, nameById.getOrDefault(sid, ""));
+                    ps.setString(2, sid);
                 });
 
                 // 2) Stage latest registrations into a TEMP table
@@ -628,17 +746,20 @@ public class StudentGradeBatchImportService {
                 if (semNormOrTruncCount.get() > 0) {
                     log.info("Registrations: normalized/truncated semester for {} rows to fit DB constraints.", semNormOrTruncCount.get());
                 }
+                // Compute counts via SQL after staging
+                Integer total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tmp_registrations", Integer.class);
+                Integer existing = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM tmp_registrations r " +
+                                "JOIN courses c ON c.course_code = r.course_code " +
+                                "JOIN student_grades sg ON sg.university_id = r.university_id AND sg.course_id = c.course_id",
+                        Integer.class);
+                int tot = (total == null ? 0 : total);
+                int upd = (existing == null ? 0 : existing);
+                counts[0] = upd;
+                counts[1] = Math.max(0, tot - upd);
 
-                // 3) Merge into student_grades in one native upsert
+                // 3) Set-based UPDATE of existing rows then INSERT only missing rows
                 ensureUniqueIndexForUpsert();
-                final String mergeSql = "INSERT INTO student_grades (university_id, course_id, grade, grade_point, promotion, category, academic_year, semester) " +
-                        "SELECT r.university_id, c.course_id, NULL, NULL, 'R', COALESCE(cat.category_name, ''), r.academic_year, r.semester " +
-                        "FROM tmp_registrations r " +
-                        "JOIN courses c ON c.course_code = r.course_code " +
-                        "LEFT JOIN students s ON s.student_id = r.university_id " +
-                        "LEFT JOIN program_course_category pcc ON pcc.course_id = c.course_id AND pcc.program_id = s.program_id " +
-                        "LEFT JOIN categories cat ON cat.category_id = pcc.category_id " +
-                        "ON DUPLICATE KEY UPDATE academic_year=VALUES(academic_year), semester=VALUES(semester), category=VALUES(category)";
                 // Diagnostics: count rows that will end up with empty category (no mapping found)
                 try {
                     String countUnmappedSql = "SELECT COUNT(*) FROM tmp_registrations r " +
@@ -662,25 +783,52 @@ public class StudentGradeBatchImportService {
                 } catch (Exception diagEx) {
                     log.warn("Registrations: diagnostics for category mapping failed: {}", diagEx.getMessage());
                 }
-                jdbcTemplate.update(mergeSql);
+                final String updSql =
+                        "UPDATE student_grades sg " +
+                        "JOIN tmp_registrations r ON sg.university_id = r.university_id " +
+                        "JOIN courses c ON c.course_code = r.course_code AND c.course_id = sg.course_id " +
+                        "LEFT JOIN students s ON s.student_id = r.university_id " +
+                        "LEFT JOIN program_course_category pcc ON pcc.course_id = c.course_id AND pcc.program_id = s.program_id " +
+                        "LEFT JOIN categories cat ON cat.category_id = pcc.category_id " +
+                        "SET sg.academic_year = r.academic_year, sg.semester = r.semester, sg.category = COALESCE(cat.category_name, '')";
+                int updRows = jdbcTemplate.update(updSql);
+                log.info("Registrations: updated existing rows: {}", updRows);
+
+                final String insMissingSql =
+                        "INSERT INTO student_grades (university_id, course_id, grade, grade_point, promotion, category, academic_year, semester) " +
+                        "SELECT r.university_id, c.course_id, NULL, NULL, 'R', COALESCE(cat.category_name, ''), r.academic_year, r.semester " +
+                        "FROM tmp_registrations r " +
+                        "JOIN courses c ON c.course_code = r.course_code " +
+                        "LEFT JOIN students s ON s.student_id = r.university_id " +
+                        "LEFT JOIN program_course_category pcc ON pcc.course_id = c.course_id AND pcc.program_id = s.program_id " +
+                        "LEFT JOIN categories cat ON cat.category_id = pcc.category_id " +
+                        "LEFT JOIN student_grades sg ON sg.university_id = r.university_id AND sg.course_id = c.course_id " +
+                        "WHERE sg.university_id IS NULL";
+                int insRows = jdbcTemplate.update(insMissingSql);
+                log.info("Registrations: inserted missing rows: {}", insRows);
 
                 // 4) Cleanup temp table
                 jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_registrations");
                 return null;
             });
 
-            // Recalculate progress for affected students asynchronously to reduce endpoint latency
+            // Recalculate progress AFTER COMMIT for affected students (Step 2)
             if (!studentIds.isEmpty()) {
                 Set<String> idsForRecalc = new HashSet<>(studentIds);
-                new Thread(() -> {
-                    try {
-                        log.info("Starting category progress recompute for {} students after Registrations upload (Step 2)", idsForRecalc.size());
-                        studentCategoryProgressService.calculateAndUpdateProgressForStudents(idsForRecalc);
-                        log.info("Completed category progress recompute after Registrations upload (Step 2)");
-                    } catch (Exception ex) {
-                        log.error("Progress recalculation error after Registrations (Step 2): {}", ex.getMessage());
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        new Thread(() -> {
+                            try {
+                                log.info("Starting category progress recompute for {} students after Registrations upload (Step 2)", idsForRecalc.size());
+                                studentCategoryProgressService.calculateAndUpdateProgressForStudents(idsForRecalc);
+                                log.info("Completed category progress recompute after Registrations upload (Step 2)");
+                            } catch (Exception ex) {
+                                log.error("Progress recalculation error after Registrations (Step 2): {}", ex.getMessage());
+                            }
+                        }, "progress-recompute-after-registrations").start();
                     }
-                }, "progress-recompute-after-registrations").start();
+                });
             } else {
                 log.info("No affected students to recompute progress for after Registrations upload (Step 2)");
             }
@@ -688,12 +836,14 @@ public class StudentGradeBatchImportService {
             if (!missingCourseCodes.isEmpty()) {
                 messages.add("Skipped unknown course codes: " + String.join(", ", missingCourseCodes));
             }
-            messages.add("Registrations processed. Grades updated: " + updatedCount + ", Missing registrations inserted: " + insertCount);
+            messages.add("Registrations processed. Grades updated: " + counts[0] + ", Missing registrations inserted: " + counts[1]);
             messages.add("Processed in a single native SQL merge for performance.");
         } catch (IOException e) {
             messages.add("Error reading file: " + e.getMessage());
         }
-
+        long _svcEndMs = System.currentTimeMillis();
+        double _durSec = (_svcEndMs - _svcStartMs) / 1000.0;
+        log.info("Registrations import finished at epoch(ms)={} duration(s)={}", _svcEndMs, String.format(java.util.Locale.ROOT, "%.3f", _durSec));
         return messages;
     }
 
@@ -801,4 +951,12 @@ public class StudentGradeBatchImportService {
         if (up.length() > 10) up = up.substring(0, 10);
         return up;
     }
+
+    // Parallel password hashing helper to speed up large student upserts without changing semantics
+    private Map<String, String> hashPasswordsParallel(Set<String> ids) {
+        if (ids == null || ids.isEmpty()) return Collections.emptyMap();
+        return ids.parallelStream().collect(Collectors.toMap(id -> id, id -> passwordEncoder.encode(id)));
+    }
+
+    
 }
