@@ -207,10 +207,14 @@ public class NaturalLanguageQueryService {
             * Registered (promotion 'R') courses indicate progress toward fulfilling remaining requirements but are not yet counted as completed.
             * Missing any category requirement keeps the overall graduation status as incomplete.
         
+
         CGPA calculation (use this rule when asked for CGPA):
-        - Consider only passed courses with non-null grade points: student_grades.promotion = 'P' AND student_grades.grade_point IS NOT NULL
+        - Consider only passed courses with non-null grade points:
+        student_grades.promotion = 'P' AND student_grades.grade_point IS NOT NULL
         - Join student_grades (sg) with courses (c) on sg.course_id = c.course_id
-        - Compute: cgpa = ROUND(SUM(sg.grade_point * c.course_credits) / SUM(c.course_credits), 2)
+        - Compute:
+        cgpa = FLOOR((SUM(sg.grade_point * c.course_credits) / SUM(c.course_credits)) * 100 + 0.5) / 100
+        # This applies Java-style rounding (if 3rd decimal >= 5, the 2nd decimal rounds up)
         - For per-student CGPA, GROUP BY s.student_id, s.student_name after joining students (s)
         """;
 
