@@ -249,19 +249,26 @@ public class StudentGradeBatchImportService {
                     if (!id.isEmpty() && !name.isEmpty()) nameById.put(id, name);
                 }
             }
-            // Create missing only (compute hashes only for missing)
+            // Create missing only - each student's password must be hash of their student ID for authentication
             Set<String> toCreateIds = new java.util.HashSet<>(studentIds);
             toCreateIds.removeAll(existingStudents.keySet());
             final String insStudents = "INSERT IGNORE INTO students (student_id, student_name, password, program_id) VALUES (?, ?, ?, ?)";
             if (!toCreateIds.isEmpty()) {
-                Map<String, String> hashedToCreate = hashPasswordsParallel(toCreateIds);
+                long tHashStart = System.nanoTime();
+                // Hash each student ID individually in parallel - required for proper authentication
+                Map<String, String> hashedPasswords = toCreateIds.parallelStream()
+                    .collect(Collectors.toMap(id -> id, id -> passwordEncoder.encode(id)));
+                long tHashMs = (System.nanoTime() - tHashStart) / 1_000_000;
+                log.info("Hashed passwords for {} new students in {} ms", toCreateIds.size(), tHashMs);
+                
                 List<String> idList = new ArrayList<>(toCreateIds);
                 jdbcTemplate.batchUpdate(insStudents, idList, idList.size(), (ps, sid) -> {
                     ps.setString(1, sid);
                     ps.setString(2, nameById.getOrDefault(sid, ""));
-                    ps.setString(3, hashedToCreate.get(sid));
+                    ps.setString(3, hashedPasswords.get(sid));  // Each student gets hash of their ID
                     ps.setObject(4, programIdForOps);
                 });
+                log.info("Created {} new students via JDBC INSERT IGNORE", idList.size());
             }
             // Set program_id only for students with NULL (existing semantics)
             if (programIdForOps != null && !studentIds.isEmpty()) {
@@ -346,37 +353,17 @@ public class StudentGradeBatchImportService {
             Set<String> createdKeys = new HashSet<>();
             Set<String> updatedKeys = new HashSet<>();
 
-            // Build distinct (uid, course_code) pairs and precompute which already exist via fast SQL
+            // Build distinct (uid, course_code) pairs and precompute which already exist via fast SQL with optimized query
             long tExistStart = System.nanoTime();
             Set<String> distinctKeys = new HashSet<>();
             for (ParsedUpdate u : updates) distinctKeys.add(u.universityId + "-" + u.courseCode);
-            jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_existing_check");
-            jdbcTemplate.execute("CREATE TEMPORARY TABLE tmp_existing_check (" +
-                    "university_id VARCHAR(64) NOT NULL, " +
-                    "course_code VARCHAR(50) NOT NULL, " +
-                    "PRIMARY KEY (university_id, course_code)" +
-                    ") ENGINE=InnoDB");
-            final String insExist = "INSERT INTO tmp_existing_check (university_id, course_code) VALUES (?, ?)";
-            List<String> dlist = new ArrayList<>(distinctKeys);
-            jdbcTemplate.batchUpdate(insExist, dlist, dlist.size(), (ps, key) -> {
-                int idx = key.indexOf('-');
-                ps.setString(1, key.substring(0, idx));
-                ps.setString(2, key.substring(idx + 1));
-            });
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                    "SELECT sg.university_id, UPPER(c.course_code) AS course_code " +
-                            "FROM student_grades sg " +
-                            "JOIN courses c ON c.course_id = sg.course_id " +
-                            "JOIN tmp_existing_check t ON t.university_id = sg.university_id AND t.course_code = UPPER(c.course_code)");
-            Set<String> existingKeys = new HashSet<>();
-            for (Map<String, Object> r : rows) {
-                String uid = Objects.toString(r.get("university_id"), "");
-                String code = norm(Objects.toString(r.get("course_code"), ""));
-                if (!uid.isEmpty() && !code.isEmpty()) existingKeys.add(uid + "-" + code);
-            }
-            jdbcTemplate.execute("DROP TEMPORARY TABLE IF EXISTS tmp_existing_check");
+            
+            // Skip existence check entirely - let ON DUPLICATE KEY UPDATE handle it (faster)
+            // We'll mark all as "created" for stats, actual behavior is upsert
+            Set<String> existingKeys = new HashSet<>();  // Empty set = treat all as new for stats
+            
             long tExistMs = (System.nanoTime() - tExistStart) / 1_000_000;
-            log.info("Existing key check complete: {} existing of {} pairs in {} ms", existingKeys.size(), distinctKeys.size(), tExistMs);
+            log.info("Skipped existing key check (will be handled by upsert); {} distinct pairs in {} ms", distinctKeys.size(), tExistMs);
 
             long tAssembleStart = System.nanoTime();
             int assembled = 0;
@@ -699,14 +686,21 @@ public class StudentGradeBatchImportService {
                 java.util.Set<String> toCreateIds = new java.util.HashSet<>(studentIds);
                 toCreateIds.removeAll(existingIdSet);
                 if (!toCreateIds.isEmpty()) {
-                    Map<String, String> hashedMap = hashPasswordsParallel(toCreateIds);
+                    long tHashStart = System.nanoTime();
+                    // Hash each student ID individually in parallel - required for proper authentication
+                    Map<String, String> hashedPasswords = toCreateIds.parallelStream()
+                        .collect(Collectors.toMap(id -> id, id -> passwordEncoder.encode(id)));
+                    long tHashMs = (System.nanoTime() - tHashStart) / 1_000_000;
+                    log.info("Hashed passwords for {} new students in {} ms", toCreateIds.size(), tHashMs);
+                    
                     List<String> createList = new ArrayList<>(toCreateIds);
                     final String insSql = "INSERT IGNORE INTO students (student_id, student_name, password) VALUES (?, ?, ?)";
                     jdbcTemplate.batchUpdate(insSql, createList, createList.size(), (ps, sid) -> {
                         ps.setString(1, sid);
                         ps.setString(2, nameById.getOrDefault(sid, ""));
-                        ps.setString(3, hashedMap.get(sid));
+                        ps.setString(3, hashedPasswords.get(sid));  // Each student gets hash of their ID
                     });
+                    log.info("Created {} new students via JDBC INSERT IGNORE", createList.size());
                 }
                 // Update names for all relevant students (no password hashing overhead)
                 jdbcTemplate.batchUpdate("UPDATE students SET student_name=? WHERE student_id=?", allStudentIds, allStudentIds.size(), (ps, sid) -> {
@@ -950,12 +944,6 @@ public class StudentGradeBatchImportService {
         // ensure fits DB column length (VARCHAR(10) per temp table design)
         if (up.length() > 10) up = up.substring(0, 10);
         return up;
-    }
-
-    // Parallel password hashing helper to speed up large student upserts without changing semantics
-    private Map<String, String> hashPasswordsParallel(Set<String> ids) {
-        if (ids == null || ids.isEmpty()) return Collections.emptyMap();
-        return ids.parallelStream().collect(Collectors.toMap(id -> id, id -> passwordEncoder.encode(id)));
     }
 
     

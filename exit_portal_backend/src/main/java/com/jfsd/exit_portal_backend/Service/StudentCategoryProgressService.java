@@ -90,15 +90,16 @@ public class StudentCategoryProgressService {
                 "JOIN categories c ON c.program_id = st.program_id\n" +
                 "LEFT JOIN program_category_requirement pcr ON pcr.program_id = st.program_id AND pcr.category_id = c.category_id\n" +
                 "LEFT JOIN (\n" +
-                "  SELECT sg.university_id, pcc.category_id, COUNT(*) AS completed_courses, SUM(co.course_credits) AS completed_credits\n" +
+                "  SELECT sg.university_id, pcc.category_id, st_inner.program_id,\n" +
+                "         COUNT(*) AS completed_courses, SUM(co.course_credits) AS completed_credits\n" +
                 "  FROM tmp_recalc_ids2 t2\n" +
                 "  JOIN student_grades sg ON sg.university_id = t2.university_id\n" +
                 "  JOIN courses co ON co.course_id = sg.course_id\n" +
-                "  JOIN program_course_category pcc ON pcc.course_id = co.course_id\n" +
-                "  JOIN students st2 ON st2.student_id = sg.university_id\n" +
-                "  WHERE sg.promotion = 'P' AND pcc.program_id = st2.program_id\n" +
-                "  GROUP BY sg.university_id, pcc.category_id\n" +
-                ") a ON a.university_id = st.student_id AND a.category_id = c.category_id\n" +
+                "  JOIN students st_inner ON st_inner.student_id = sg.university_id\n" +
+                "  JOIN program_course_category pcc ON pcc.course_id = co.course_id AND pcc.program_id = st_inner.program_id\n" +
+                "  WHERE sg.promotion = 'P'\n" +
+                "  GROUP BY sg.university_id, pcc.category_id, st_inner.program_id\n" +
+                ") a ON a.university_id = st.student_id AND a.category_id = c.category_id AND a.program_id = st.program_id\n" +
                 "WHERE st.program_id IS NOT NULL";
         jdbcTemplate.update(insertSql);
 
