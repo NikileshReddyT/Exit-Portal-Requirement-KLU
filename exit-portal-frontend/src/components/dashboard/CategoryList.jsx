@@ -19,10 +19,26 @@ const CategoryList = ({ categories, onShowPopup }) => {
     }
 
     const sortedCategories = [...categories].sort((a, b) => {
-        const aIncomplete = a.completedCourses < a.minRequiredCourses;
-        const bIncomplete = b.completedCourses < b.minRequiredCourses;
-        if (aIncomplete === bIncomplete) return 0;
-        return aIncomplete ? -1 : 1;
+        // Calculate status for each category: 1=At Risk, 2=On Track, 3=Complete
+        const getStatusOrder = (cat) => {
+            const reqC = Number(cat.minRequiredCourses) || 0;
+            const regC = Number(cat.registeredCourses) || 0;
+            const doneC = Number(cat.completedCourses) || 0;
+            const reqCr = Number(cat.minRequiredCredits) || 0;
+            const regCr = Number(cat.registeredCredits) || 0;
+            const doneCr = Number(cat.completedCredits) || 0;
+            
+            // Actual registered = registered - completed (pending registrations only)
+            const actualRegC = Math.max(0, regC - doneC);
+            const actualRegCr = Math.max(0, regCr - doneCr);
+            
+            const requirementMet = (doneC >= reqC) && (doneCr >= reqCr);
+            const onTrack = !requirementMet && (doneC + actualRegC) >= reqC && (doneCr + actualRegCr) >= reqCr;
+            
+            return requirementMet ? 3 : onTrack ? 2 : 1;
+        };
+        
+        return getStatusOrder(a) - getStatusOrder(b); // Sort: At Risk → On Track → Complete
     });
 
     const containerVariants = {

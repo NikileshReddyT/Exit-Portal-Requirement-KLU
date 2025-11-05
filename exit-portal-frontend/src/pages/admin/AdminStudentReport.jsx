@@ -1,16 +1,69 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiLoader, FiAlertTriangle, FiChevronDown, FiRefreshCw } from 'react-icons/fi';
+import { FiLoader, FiAlertTriangle, FiChevronDown, FiChevronRight, FiRefreshCw, FiDownload, FiUser } from 'react-icons/fi';
 import PdfDownloadButton from '../../components/ui/PdfDownloadButton';
+
+// Circular Progress Component
+const CircularProgress = ({ value, total, label, color = 'blue', showPercentage = false }) => {
+  const percentage = total > 0 ? (value / total) * 100 : 0;
+  const circumference = 2 * Math.PI * 54;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  const colorClasses = {
+    green: { stroke: 'stroke-green-600', text: 'text-green-600', bg: 'stroke-gray-200' },
+    yellow: { stroke: 'stroke-amber-500', text: 'text-amber-500', bg: 'stroke-gray-200' },
+    blue: { stroke: 'stroke-blue-600', text: 'text-blue-600', bg: 'stroke-gray-200' },
+  };
+
+  const colors = colorClasses[color] || colorClasses.blue;
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-36 h-36">
+        <svg className="transform -rotate-90 w-36 h-36">
+          <circle
+            cx="72"
+            cy="72"
+            r="54"
+            className={`${colors.bg} fill-none`}
+            strokeWidth="8"
+          />
+          <motion.circle
+            cx="72"
+            cy="72"
+            r="54"
+            className={`${colors.stroke} fill-none`}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            initial={{ strokeDashoffset: circumference }}
+            animate={{ strokeDashoffset }}
+            transition={{ duration: 1.5, ease: 'easeInOut' }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-3xl font-bold ${colors.text}`}>
+            {showPercentage ? `${Math.round(percentage)}%` : value}
+          </span>
+          {!showPercentage && (
+            <span className="text-sm text-gray-500">of {total}</span>
+          )}
+        </div>
+      </div>
+      <p className="mt-3 text-sm font-semibold text-gray-700 text-center">{label}</p>
+    </div>
+  );
+};
 
 const AdminStudentReport = () => {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const { selectedProgramId } = useProgramContext();
 
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -142,34 +195,37 @@ const AdminStudentReport = () => {
   const guard = !user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN');
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Student Report</h2>
-          <p className="text-sm text-gray-600">
-            {studentId ? (
-              <>Detailed report for student <span className="font-semibold">{studentId}</span></>
-            ) : (
-              <>Select a student from the Students page to view their report</>
-            )}
-          </p>
-          {effectiveProgramId && (
-            <p className="text-xs text-gray-500 mt-1">Program: {String(effectiveProgramId)}</p>
-          )}
+    <div className="min-h-screen bg-gray-50">
+      {/* Breadcrumb */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <span className="cursor-pointer hover:text-brand-red" onClick={() => navigate('/admin/dashboard')}>Dashboard</span>
+          <FiChevronRight size={14} />
+          <span className="cursor-pointer hover:text-brand-red" onClick={() => navigate('/admin/students')}>Students</span>
+          <FiChevronRight size={14} />
+          <span className="text-gray-900 font-medium">{data?.studentName || studentId || 'Student'}</span>
         </div>
-        {studentId && (
-          <motion.div className="flex items-center gap-3" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
-            <div
-              onClick={handleRefresh}
-              className="flex items-center gap-2 text-gray-600 hover:bg-gray-50 cursor-pointer text-sm  px-4 py-2 rounded-lg border border-gray-200"
-            >
-              <FiRefreshCw className={loading ? 'animate-spin' : ''} size={14} />
-              Refresh
-            </div>
-            <PdfDownloadButton studentId={studentId} wrapperClassName="flex items-center" />
-          </motion.div>
-        )}
       </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        {/* Header with Download Button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Student Academic Report</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <motion.button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <FiRefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+              <span className="text-sm font-medium">Refresh</span>
+            </motion.button>
+            {studentId && <PdfDownloadButton studentId={studentId} wrapperClassName="flex items-center" />}
+          </div>
+        </div>
 
       {guard && (
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3 flex items-center gap-2">
@@ -206,83 +262,140 @@ const AdminStudentReport = () => {
             </motion.div>
           ) : data ? (
             <motion.div key="content" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              {/* Student Info */}
-              <motion.div className="bg-white rounded-xl shadow p-5 border border-gray-100" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-gray-500">Student ID</div>
-                    <div className="font-semibold text-gray-900 break-words">{data.studentId || studentId}</div>
+              {/* Student Info Card */}
+              <motion.div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+                <div className="flex items-start gap-6">
+                  {/* Avatar */}
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center flex-shrink-0">
+                    <FiUser size={32} className="text-blue-600" />
                   </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-gray-500">Student Name</div>
-                    <div className="font-semibold text-gray-900 break-words">{data.studentName || '—'}</div>
+
+                  {/* Student Details Grid */}
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <div className="text-lg font-bold text-gray-900">{data.studentName || '—'}</div>
+                      <div className="text-sm text-gray-600">Student ID: <span className="font-semibold">{data.studentId || studentId}</span></div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">CGPA</div>
+                      <div className="text-lg font-bold text-gray-900">
+                        {(() => {
+                          // CGPA Calculation: FLOOR((SUM(grade_point * credits) / SUM(credits)) * 100 + 0.5) / 100
+                          // This applies Java-style rounding (if 3rd decimal >= 5, the 2nd decimal rounds up)
+                          const passedCourses = (data.categories || [])
+                            .flatMap(cat => (cat.courses || []))
+                            .filter(c => c.promotion === 'P' && c.gradePoint != null && c.credits != null);
+                          
+                          if (passedCourses.length === 0) return '—';
+                          
+                          const totalWeightedPoints = passedCourses.reduce(
+                            (sum, c) => sum + (c.gradePoint * c.credits), 0
+                          );
+                          const totalCredits = passedCourses.reduce(
+                            (sum, c) => sum + c.credits, 0
+                          );
+                          
+                          if (totalCredits === 0) return '0.00 / 10.0';
+                          
+                          const rawCgpa = totalWeightedPoints / totalCredits;
+                          // Java-style rounding: FLOOR(value * 100 + 0.5) / 100
+                          const cgpa = (Math.floor(rawCgpa * 100 + 0.5) / 100).toFixed(2);
+                          return `${cgpa} / 10.0`;
+                        })()}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </motion.div>
 
-              {/* Totals with progress */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <motion.div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm" whileHover={{ y: -2 }}>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Completed Courses</div>
-                  <div className="mt-1 text-2xl font-bold text-red-900">
-                    {totals.totalCompletedCourses}
-                    <span className="text-sm font-normal text-gray-500 ml-1">/ {totals.totalReqCourses}</span>
-                  </div>
+              {/* Circular Progress Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <motion.div 
+                  className="bg-white rounded-2xl shadow-sm p-8 border border-gray-100 flex items-center justify-center"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  <CircularProgress
+                    value={totals.totalCompletedCourses}
+                    total={totals.totalReqCourses}
+                    label="Courses Completed"
+                    color="green"
+                  />
                 </motion.div>
-                <motion.div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm" whileHover={{ y: -2 }}>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Completed Credits</div>
-                  <div className="mt-1 text-2xl font-bold text-red-900">
-                    {totals.totalCompletedCredits}
-                    <span className="text-sm font-normal text-gray-500 ml-1">/ {totals.totalReqCredits}</span>
-                  </div>
+                <motion.div 
+                  className="bg-white rounded-2xl shadow-sm p-8 border border-gray-100 flex items-center justify-center"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <CircularProgress
+                    value={totals.totalCompletedCredits}
+                    total={totals.totalReqCredits}
+                    label="Credits Earned"
+                    color="yellow"
+                  />
                 </motion.div>
-                <motion.div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm" whileHover={{ y: -2 }}>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Progress (Credits)</div>
-                  <div className="mt-1 text-2xl font-bold text-red-900">{Math.round(totals.pctCredits)}%</div>
+                <motion.div 
+                  className="bg-white rounded-2xl shadow-sm p-8 border border-gray-100 flex items-center justify-center"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <CircularProgress
+                    value={Math.round(totals.pctCredits)}
+                    total={100}
+                    label="Overall Progress"
+                    color="blue"
+                    showPercentage
+                  />
                 </motion.div>
               </div>
 
               {/* Category Progress Summary with hover tooltip and expandable details */}
-              <div className="bg-white rounded-xl shadow p-5 border border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Category Progress</h3>
+              <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-gray-900">Category Progress</h3>
                 </div>
-                
-                {/* Color Legend */}
-                <div className="flex items-center gap-4 mb-4 text-xs text-gray-600">
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-green-600 rounded"></div>
-                    <span>Completed</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-amber-400 rounded"></div>
-                    <span>Registered</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-gray-200 rounded"></div>
-                    <span>Remaining</span>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  {(data.categoryProgress || []).map((cp, idx) => {
+                <div className="space-y-3">
+                  {(data.categoryProgress || [])
+                    .map((cp) => {
+                      // Calculate status first for sorting
+                      const reqC = Number(cp.minRequiredCourses) || 0;
+                      const regC = Number(cp.registeredCourses) || 0;
+                      const doneC = Number(cp.completedCourses) || 0;
+                      const reqCr = Number(cp.minRequiredCredits) || 0;
+                      const regCr = Number(cp.registeredCredits) || 0;
+                      const doneCr = Number(cp.completedCredits) || 0;
+                      // Actual registered = registered - completed (pending registrations only)
+                      const actualRegC = Math.max(0, regC - doneC);
+                      const actualRegCr = Math.max(0, regCr - doneCr);
+                      const requirementMet = (doneC >= reqC) && (doneCr >= reqCr);
+                      const onTrack = !requirementMet && (doneC + actualRegC) >= reqC && (doneCr + actualRegCr) >= reqCr;
+                      const statusOrder = requirementMet ? 3 : onTrack ? 2 : 1; // 1=At Risk, 2=On Track, 3=Complete
+                      return { ...cp, statusOrder, actualRegC, actualRegCr };
+                    })
+                    .sort((a, b) => a.statusOrder - b.statusOrder) // Sort: At Risk → On Track → Complete
+                    .map((cp, idx) => {
                     const reqC = Number(cp.minRequiredCourses) || 0;
                     const regC = Number(cp.registeredCourses) || 0;
                     const doneC = Number(cp.completedCourses) || 0;
                     const reqCr = Number(cp.minRequiredCredits) || 0;
                     const regCr = Number(cp.registeredCredits) || 0;
                     const doneCr = Number(cp.completedCredits) || 0;
+                    // Actual registered = registered - completed (pending registrations only)
+                    const actualRegC = Math.max(0, regC - doneC);
+                    const actualRegCr = Math.max(0, regCr - doneCr);
                     const pctComplete = reqC > 0 ? (doneC / reqC) * 100 : 100;
-                    const pctRegistered = reqC > 0 ? (regC / reqC) * 100 : 0;
+                    // Total progress includes both completed and registered
+                    const totalPct = reqC > 0 ? ((doneC + actualRegC) / reqC) * 100 : 0;
                     const cat = categoriesByName.get(cp.categoryName);
 
-                    // Status logic inspired by PdfDownloadButton
                     const requirementMet = (doneC >= reqC) && (doneCr >= reqCr);
-                    const remainingCourses = Math.max(0, reqC - doneC);
-                    const remainingCredits = Math.max(0, reqCr - doneCr);
-                    const virtuallyMetWithRegistered = !requirementMet && (regC >= reqC) && (regCr >= reqCr) && (doneC < reqC) && (doneCr < reqCr);
-
-                    const barBg = 'bg-gray-200';
-                    const labelBadge = requirementMet ? 'bg-green-100 text-green-800' : (virtuallyMetWithRegistered ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700');
+                    const remainingCourses = Math.max(0, reqC - doneC - actualRegC);
+                    const remainingCredits = Math.max(0, reqCr - doneCr - actualRegCr);
+                    const showRegistered = actualRegC > 0 && !requirementMet;
+                    const onTrack = !requirementMet && (doneC + actualRegC) >= reqC && (doneCr + actualRegCr) >= reqCr;
 
                     return (
                       <motion.div
@@ -290,54 +403,73 @@ const AdminStudentReport = () => {
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: idx * 0.03 }}
-                        className="border border-gray-200 rounded-lg p-4"
+                        className="border-2 border-gray-200 rounded-2xl p-6 hover:shadow-lg hover:border-gray-300 transition-all cursor-pointer bg-white"
+                        onClick={() => setExpandedCategory(prev => prev === cp.categoryName ? null : cp.categoryName)}
                       >
-                        <div
-                          onClick={() => setExpandedCategory(prev => prev === cp.categoryName ? null : cp.categoryName)}
-                          className="w-full text-left cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors"
-                        >
-                          <div className="flex items-center justify-between w-full gap-4">
-                            <div>
-                              <div className="text-sm text-gray-500">Category</div>
-                              <div className="font-semibold text-gray-900 flex items-center gap-2">
-                                {cp.categoryName}
-                                <span className={`px-2 py-0.5 rounded-full text-xs ${labelBadge}`}>
-                                  {requirementMet
-                                    ? 'Met'
-                                    : virtuallyMetWithRegistered
-                                      ? `${remainingCourses} courses (${remainingCredits} credits) pending`
-                                      : 'Pending'}
-                                </span>
-                              </div>
+                        {/* Header Row with Credits - Larger */}
+                        <div className="space-y-3 mb-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-lg font-bold text-gray-900">{cp.categoryName}</div>
                             </div>
-                            <div className="text-sm text-gray-700 flex items-center gap-1">
-                              {doneC} / {reqC} courses
-                              <FiChevronDown className={`transition-transform ${expandedCategory === cp.categoryName ? 'rotate-180' : ''}`} />
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                                requirementMet 
+                                  ? 'bg-green-100 text-green-700'
+                                  : onTrack
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-red-50 text-red-700'
+                              }`}>
+                                {requirementMet ? '✓' : onTrack ? '⌛' : '⚠'}
+                              </span>
+                              <FiChevronDown 
+                                className={`transition-transform text-gray-400 ${expandedCategory === cp.categoryName ? 'rotate-180' : ''}`} 
+                                size={20}
+                              />
                             </div>
                           </div>
-                          <div className="mt-3 group relative">
-                            <div className={`w-full h-3 ${barBg} rounded-full overflow-hidden relative`}>
-                              {/* Registered segment */}
-                              <motion.div
-                                className="absolute left-0 top-0 h-3 bg-amber-400/60"
-                                initial={{ width: 0 }}
-                                animate={{ width: `${Math.min(100, Math.max(0, pctRegistered))}%` }}
-                                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-                              />
-                              {/* Completed segment overlays registered */}
-                              <motion.div
-                                className="absolute left-0 top-0 h-3 bg-green-600"
-                                initial={{ width: 0 }}
-                                animate={{ width: `${Math.min(100, Math.max(0, pctComplete))}%` }}
-                                transition={{ type: 'spring', stiffness: 140, damping: 18 }}
-                              />
+                          {/* Stats Row - Larger */}
+                          <div className="flex items-center gap-6 text-sm">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-600 font-medium">Courses:</span>
+                              <span className="font-bold text-green-700">{doneC}</span>
+                              {showRegistered && <span className="text-amber-600 font-bold">+ {actualRegC}</span>}
+                              <span className="text-gray-500">/ {reqC}</span>
                             </div>
-                            {/* Tooltip (appears on hover of the bar) */}
-                            <div className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full bg-white border border-gray-200 shadow-lg rounded-md px-3 py-2 text-xs text-gray-700 z-10">
-                              <div className="font-medium text-gray-900 mb-1">{cp.categoryName}</div>
-                              <div>Courses — Req: <span className="font-semibold">{reqC}</span>, Reg: <span className="font-semibold">{regC}</span>, Done: <span className="font-semibold">{doneC}</span></div>
-                              <div>Credits — Req: <span className="font-semibold">{reqCr}</span>, Reg: <span className="font-semibold">{regCr}</span>, Done: <span className="font-semibold">{doneCr}</span></div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-600 font-medium">Credits:</span>
+                              <span className="font-bold text-green-700">{doneCr}</span>
+                              {showRegistered && <span className="text-amber-600 font-bold">+ {actualRegCr}</span>}
+                              <span className="text-gray-500">/ {reqCr}</span>
                             </div>
+                            {remainingCourses > 0 && (
+                              <span className="text-red-600 font-bold ml-auto">{remainingCourses} left</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Progress Bar */}
+                        <div className="relative">
+                          <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden relative">
+                            {/* Yellow bar for total (completed + registered) - only show if registered exists */}
+                            {showRegistered && (
+                              <motion.div
+                                className="absolute left-0 top-0 h-2.5 bg-amber-400 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min(100, totalPct)}%` }}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                              />
+                            )}
+                            {/* Green bar for completed - overlays yellow */}
+                            <motion.div
+                              className="absolute left-0 top-0 h-2.5 bg-green-600 rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(100, pctComplete)}%` }}
+                              transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }}
+                            />
+                          </div>
+                          {/* Stats below bar */}
+                          <div className="flex justify-between items-center mt-2 text-sm text-gray-700">
+                            <span className="font-semibold">{Math.round(pctComplete)}% done{showRegistered && ` • ${Math.round(totalPct)}% total`}</span>
                           </div>
                         </div>
 
@@ -503,6 +635,7 @@ const AdminStudentReport = () => {
           ) : null}
         </AnimatePresence>
       )}
+      </div>
     </div>
   );
 };
