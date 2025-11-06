@@ -1,10 +1,12 @@
 package com.jfsd.exit_portal_backend.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 // import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.Map;
 
@@ -32,6 +34,8 @@ import com.jfsd.exit_portal_backend.Repository.StudentRepository;
 import com.jfsd.exit_portal_backend.Repository.ProgramCourseCategoryRepository;
 
 import com.jfsd.exit_portal_backend.dto.Student;
+import com.jfsd.exit_portal_backend.dto.honors.StudentHonorsStatusDTO;
+import com.jfsd.exit_portal_backend.dto.honors.HonorsRequirementStatusDTO;
 // import com.jfsd.exit_portal_backend.Service.StudentCategoryProgressService;
 
 @Service
@@ -67,6 +71,17 @@ public class FrontendService {
         long _startNanos = System.nanoTime();
         // Fetch persisted/enriched progress rows (3NF-aware, program-scoped)
         List<StudentCategoryProgress> rows = studentCategoryProgressService.getStudentProgress(universityId);
+        StudentHonorsStatusDTO honorsStatus = studentCategoryProgressService.buildStudentHonorsStatus(universityId, rows);
+        Map<String, HonorsRequirementStatusDTO> honorsByCategory = Collections.emptyMap();
+        if (honorsStatus != null && honorsStatus.getCategoryStatuses() != null) {
+            honorsByCategory = honorsStatus.getCategoryStatuses().stream()
+                    .filter(status -> status.getCategoryName() != null)
+                    .collect(Collectors.toMap(
+                            status -> status.getCategoryName().trim().toLowerCase(),
+                            Function.identity(),
+                            (a, b) -> a
+                    ));
+        }
         if (rows == null || rows.isEmpty()) {
             logger.info("getStudentCategoryProgress for student {} completed in {} ms (no rows)", universityId, (System.nanoTime() - _startNanos) / 1_000_000);
             return new ArrayList<>();
@@ -95,6 +110,9 @@ public class FrontendService {
 
                 int minCourses = (scp.getMinRequiredCourses() != null) ? scp.getMinRequiredCourses() : 0;
                 double minCredits = (scp.getMinRequiredCredits() != null) ? scp.getMinRequiredCredits() : 0.0;
+                HonorsRequirementStatusDTO honorsMatch = honorsByCategory.get(normCat);
+                Double honorsMinCredits = honorsMatch != null ? honorsMatch.getHonorsMinCredits() : null;
+                boolean honorsRequirementMet = honorsMatch != null && honorsMatch.isMet();
                 long completedCourses = (scp.getCompletedCourses() != null) ? scp.getCompletedCourses().longValue() : 0L;
                 Double completedCredits = scp.getCompletedCredits();
 
@@ -102,6 +120,8 @@ public class FrontendService {
                         categoryName,
                         minCourses,
                         minCredits,
+                        honorsMinCredits,
+                        honorsRequirementMet,
                         registeredCourses,
                         registeredCredits,
                         completedCourses,
@@ -169,11 +189,36 @@ public class FrontendService {
             // Fetch category progress rows (includes min requirements and completed metrics)
             List<StudentCategoryProgress> rows = studentCategoryProgressService.getStudentProgress(universityId);
             List<StudentCategoryProgressDTO> studentCategoryProgressDTO = getStudentCategoryProgress(universityId);
-            
+            StudentHonorsStatusDTO honorsStatus = studentCategoryProgressService.buildStudentHonorsStatus(universityId, rows);
+            Map<String, HonorsRequirementStatusDTO> honorsByCategory;
+            if (honorsStatus != null && honorsStatus.getCategoryStatuses() != null) {
+                honorsByCategory = honorsStatus.getCategoryStatuses().stream()
+                        .filter(status -> status.getCategoryName() != null)
+                        .collect(Collectors.toMap(
+                                status -> status.getCategoryName().trim().toLowerCase(),
+                                Function.identity(),
+                                (a, b) -> a
+                        ));
+            } else {
+                honorsByCategory = Collections.emptyMap();
+            }
+
             StudentCourseReportDTO report = new StudentCourseReportDTO();
             report.setStudentId(studentEntity.getStudentId());
             report.setStudentName(studentEntity.getStudentName());
             report.setCategoryProgress(studentCategoryProgressDTO);
+            if (honorsStatus != null) {
+                report.setHonorsEligible(honorsStatus.isEligible());
+                report.setHasAnyFailure(honorsStatus.isHasAnyFailure());
+                List<HonorsRequirementStatusDTO> statusCopy = honorsStatus.getCategoryStatuses() != null
+                        ? new ArrayList<>(honorsStatus.getCategoryStatuses())
+                        : Collections.emptyList();
+                report.setHonorsCategoryStatuses(statusCopy);
+            } else {
+                report.setHonorsEligible(false);
+                report.setHasAnyFailure(false);
+                report.setHonorsCategoryStatuses(Collections.emptyList());
+            }
 
             List<CategoryCoursesDTO> categories = new ArrayList<>();
             int totalCompletedCourses = 0;
@@ -236,6 +281,14 @@ public class FrontendService {
                 cat.setCompletedCourses(completedCourses);
                 cat.setCompletedCredits(completedCredits);
                 cat.setCourses(grades != null ? grades : new ArrayList<>());
+                HonorsRequirementStatusDTO honorsMatch = honorsByCategory.getOrDefault(normCat, null);
+                if (honorsMatch != null) {
+                    cat.setHonorsMinCredits(honorsMatch.getHonorsMinCredits());
+                    cat.setHonorsRequirementMet(honorsMatch.isMet());
+                } else {
+                    cat.setHonorsMinCredits(null);
+                    cat.setHonorsRequirementMet(false);
+                }
 
                 // Build incompleteCourses: program-scoped category courses minus completed ones (promotion=='P')
                 List<incompleteCategoryCourses> incomplete = new ArrayList<>();

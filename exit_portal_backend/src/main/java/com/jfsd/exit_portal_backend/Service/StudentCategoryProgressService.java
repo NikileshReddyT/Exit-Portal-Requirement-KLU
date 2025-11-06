@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -21,6 +22,8 @@ import com.jfsd.exit_portal_backend.dto.category.CompletedStudentDetailDTO;
 import com.jfsd.exit_portal_backend.dto.category.IncompleteStudentDetailDTO;
 import com.jfsd.exit_portal_backend.dto.category.StudentSummaryDTO;
 import com.jfsd.exit_portal_backend.dto.category.CategoryCompletionDetailsDTO;
+import com.jfsd.exit_portal_backend.dto.honors.HonorsRequirementStatusDTO;
+import com.jfsd.exit_portal_backend.dto.honors.StudentHonorsStatusDTO;
 
 @Service
 public class StudentCategoryProgressService {
@@ -36,6 +39,9 @@ public class StudentCategoryProgressService {
     
     @Autowired
     private ProgramCategoryRequirementRepository programCategoryRequirementRepository;
+
+    @Autowired
+    private StudentRepository studentRepository;
     
     // categoriesRepository no longer needed after SQL rewrite
 
@@ -112,6 +118,7 @@ public class StudentCategoryProgressService {
         long tEnd = System.currentTimeMillis();
         log.info("Recompute(SQL): completed for {} students in {} ms (delete:{}ms, insert:{}ms)",
                 universityIds.size(), (tEnd - tStart), (tDelEnd - tDelStart), (tInsEnd - tInsStart));
+
     }
 
     @Transactional
@@ -141,7 +148,67 @@ public class StudentCategoryProgressService {
         Set<String> programStudentIds = studentGradeRepository.findStudentIdsByProgramCode(programCode).stream().collect(Collectors.toSet());
         calculateAndUpdateProgressForStudents(programStudentIds);
     }
-    
+
+    public StudentHonorsStatusDTO getStudentHonorsStatus(String universityId) {
+        return buildStudentHonorsStatus(universityId, null);
+    }
+
+    public StudentHonorsStatusDTO buildStudentHonorsStatus(String universityId, List<StudentCategoryProgress> existingProgressRows) {
+        if (universityId == null || universityId.isBlank()) {
+            return null;
+        }
+
+        Student student = studentRepository.findByStudentId(universityId).orElse(null);
+        if (student == null) {
+            return null;
+        }
+
+        boolean hasFailure = student.isHasAnyFailure();
+        Program program = student.getProgram();
+        List<ProgramCategoryRequirement> honorsRequirements;
+        if (program != null && program.getProgramId() != null) {
+            honorsRequirements = programCategoryRequirementRepository.findHonorsRequirementsByProgramId(program.getProgramId());
+        } else {
+            honorsRequirements = java.util.Collections.emptyList();
+        }
+
+        List<StudentCategoryProgress> progressRows = existingProgressRows;
+        if (progressRows == null) {
+            progressRows = progressRepository.findByUniversityIdOrderByCategoryId(universityId);
+        }
+        Map<String, StudentCategoryProgress> progressByCategory = progressRows.stream()
+                .filter(row -> row.getCategoryName() != null)
+                .collect(Collectors.toMap(StudentCategoryProgress::getCategoryName, Function.identity(), (a, b) -> a));
+
+        List<HonorsRequirementStatusDTO> statuses = new ArrayList<>();
+        boolean meetsHonorsCredits = true;
+        if (!honorsRequirements.isEmpty()) {
+            for (ProgramCategoryRequirement requirement : honorsRequirements) {
+                String categoryName = requirement.getCategory() != null ? requirement.getCategory().getCategoryName() : null;
+                if (categoryName == null || categoryName.isBlank()) {
+                    continue;
+                }
+                double requiredCredits = requirement.getHonorsMinCredits() == null ? 0.0 : requirement.getHonorsMinCredits();
+                StudentCategoryProgress progress = progressByCategory.get(categoryName);
+                double completedCredits = (progress != null && progress.getCompletedCredits() != null) ? progress.getCompletedCredits() : 0.0;
+                boolean met = completedCredits + 1e-6 >= requiredCredits;
+                if (!met) {
+                    meetsHonorsCredits = false;
+                }
+                statuses.add(new HonorsRequirementStatusDTO(categoryName, requiredCredits, completedCredits, met));
+            }
+        }
+
+        boolean eligible = !hasFailure && meetsHonorsCredits;
+        StudentHonorsStatusDTO dto = new StudentHonorsStatusDTO();
+        dto.setStudentId(student.getStudentId());
+        dto.setStudentName(student.getStudentName());
+        dto.setHasAnyFailure(hasFailure);
+        dto.setEligible(eligible);
+        dto.setCategoryStatuses(statuses);
+        return dto;
+    }
+
     public List<StudentCategoryProgress> getStudentProgressForProgram(String universityId, String programCode) {
         List<StudentCategoryProgress> rows = progressRepository.findByUniversityIdAndProgramCode(universityId, programCode);
         enrichWithMinimumsForProgram(rows, programCode);

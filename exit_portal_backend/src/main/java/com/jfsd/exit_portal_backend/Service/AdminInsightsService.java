@@ -20,9 +20,11 @@ import com.jfsd.exit_portal_backend.Model.Categories;
 import com.jfsd.exit_portal_backend.Model.Courses;
 import com.jfsd.exit_portal_backend.Model.Student;
 import com.jfsd.exit_portal_backend.Model.StudentGrade;
+import com.jfsd.exit_portal_backend.dto.honors.HonorsRequirementUpdateRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -53,6 +55,9 @@ public class AdminInsightsService {
 
     @Autowired
     private CoursesRepository coursesRepository;
+
+    private static final double HONORS_EPSILON = 1e-6;
+    private static final int MAX_CATEGORY_STUDENT_LIST = 200;
 
     @Cacheable(cacheNames = "admin_api", key = "'buildDashboard:' + #userType + ':' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> buildDashboard(String userType, Long programId) {
@@ -151,6 +156,260 @@ public class AdminInsightsService {
             return m;
         }).sorted(Comparator.comparing((Map<String, Object> m) -> (Double) m.get("metRateProjected")))
           .collect(Collectors.toList());
+    }
+
+    public Map<String, Object> getHonorsOverview(Long programId) {
+        List<ProgramCategoryRequirement> honorsRequirements = (programId != null)
+                ? programCategoryRequirementRepository.findHonorsRequirementsByProgramId(programId)
+                : programCategoryRequirementRepository.findByHonorsMinCreditsIsNotNull();
+
+        LinkedHashMap<String, ProgramCategoryRequirement> requirementByCategory = new LinkedHashMap<>();
+        LinkedHashMap<String, HonorsCategoryStats> categoryStats = new LinkedHashMap<>();
+        List<String> differenceCategoryDisplay = new ArrayList<>();
+
+        if (!honorsRequirements.isEmpty()) {
+            for (ProgramCategoryRequirement requirement : honorsRequirements) {
+                if (requirement == null || requirement.getCategory() == null || requirement.getCategory().getCategoryName() == null) {
+                    continue;
+                }
+                String categoryName = requirement.getCategory().getCategoryName();
+                String normalized = normalizeCategory(categoryName);
+                if (normalized == null) continue;
+                // Later requirements for same category should overwrite earlier ones to reflect latest state
+                requirementByCategory.put(normalized, requirement);
+            }
+        }
+
+        for (ProgramCategoryRequirement requirement : requirementByCategory.values()) {
+            String categoryName = requirement.getCategory().getCategoryName();
+            Double minCredits = requirement.getMinCredits();
+            Double honorsMinCredits = requirement.getHonorsMinCredits();
+            boolean differs = differsFromRegular(honorsMinCredits, minCredits);
+            if (differs) {
+                differenceCategoryDisplay.add(categoryName);
+            }
+            categoryStats.put(
+                    normalizeCategory(categoryName),
+                    new HonorsCategoryStats(categoryName, minCredits, honorsMinCredits, differs)
+            );
+        }
+
+        if (categoryStats.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("hasHonorsConfigured", false);
+            empty.put("programId", programId);
+            empty.put("totalStudents", 0);
+            empty.put("studentsWithoutFailure", 0);
+            empty.put("honorsCategoryCount", 0);
+            empty.put("differenceCategoryCount", 0);
+            empty.put("differenceCategories", Collections.emptyList());
+            empty.put("eligibleCount", 0);
+            empty.put("honorsAchieversCount", 0);
+            empty.put("failedButMetHonorsCount", 0);
+            empty.put("studentsWithFailures", 0);
+            empty.put("eligibleStudents", Collections.emptyList());
+            empty.put("honorsStudents", Collections.emptyList());
+            empty.put("failedButMetHonors", Collections.emptyList());
+            empty.put("categories", Collections.emptyList());
+            return empty;
+        }
+
+        List<Student> students = (programId != null)
+                ? studentRepository.findByProgram_ProgramId(programId)
+                : studentRepository.findAll();
+
+        LinkedHashMap<String, HonorsStudentAccumulator> studentAccumulators = new LinkedHashMap<>();
+        for (Student student : students) {
+            if (student == null || student.getStudentId() == null) continue;
+            HonorsStudentAccumulator acc = new HonorsStudentAccumulator(
+                    student.getStudentId(),
+                    student.getStudentName(),
+                    student.isHasAnyFailure()
+            );
+            studentAccumulators.put(student.getStudentId(), acc);
+        }
+
+        List<StudentCategoryProgressRepository.StudentCategoryCellProjection> cells = progressRepository.findStudentCategoryCells(programId);
+        for (StudentCategoryProgressRepository.StudentCategoryCellProjection cell : cells) {
+            if (cell == null || cell.getStudentId() == null) continue;
+            String studentId = cell.getStudentId();
+            HonorsStudentAccumulator acc = studentAccumulators.computeIfAbsent(
+                    studentId,
+                    id -> new HonorsStudentAccumulator(id, cell.getStudentName(), false)
+            );
+            if (cell.getStudentName() != null && (acc.studentName == null || acc.studentName.isBlank())) {
+                acc.studentName = cell.getStudentName();
+            }
+
+            String normalizedCategory = normalizeCategory(cell.getCategoryName());
+            if (normalizedCategory == null) continue;
+            double completedCredits = cell.getCompletedCredits() != null ? cell.getCompletedCredits() : 0.0;
+            acc.completedCreditsByCategory.put(normalizedCategory, completedCredits);
+
+            HonorsCategoryStats stats = categoryStats.get(normalizedCategory);
+            if (stats != null) {
+                double honorsMin = stats.honorsMinCredits != null ? stats.honorsMinCredits : 0.0;
+                double regularMin = stats.minCredits != null ? stats.minCredits : 0.0;
+                boolean meetsHonors = stats.honorsMinCredits != null && completedCredits + HONORS_EPSILON >= honorsMin;
+                boolean meetsRegular = completedCredits + HONORS_EPSILON >= regularMin;
+
+                if (meetsHonors) {
+                    stats.metHonorsStudentIds.add(studentId);
+                    stats.notMetHonorsStudentIds.remove(studentId);
+                } else if (stats.honorsMinCredits != null && !stats.metHonorsStudentIds.contains(studentId)) {
+                    stats.notMetHonorsStudentIds.add(studentId);
+                }
+
+                if (meetsRegular) {
+                    stats.metRegularStudentIds.add(studentId);
+                }
+
+                if (acc.hasFailure) {
+                    stats.failedStudentIds.add(studentId);
+                }
+            }
+        }
+
+        int totalStudents = studentAccumulators.size();
+        long studentsWithoutFailure = studentAccumulators.values().stream().filter(acc -> !acc.hasFailure).count();
+
+        LinkedHashSet<String> eligibleStudentIds = new LinkedHashSet<>();
+        LinkedHashSet<String> honorsStudentIds = new LinkedHashSet<>();
+        LinkedHashSet<String> failedButMetHonorsIds = new LinkedHashSet<>();
+        LinkedHashSet<String> failureStudentIds = new LinkedHashSet<>();
+
+        for (HonorsStudentAccumulator acc : studentAccumulators.values()) {
+            boolean meetsDifference = true;
+            boolean meetsAllHonors = true;
+
+            for (Map.Entry<String, HonorsCategoryStats> entry : categoryStats.entrySet()) {
+                HonorsCategoryStats stats = entry.getValue();
+                Double honorsMin = stats.honorsMinCredits;
+                if (honorsMin == null) continue;
+                double completed = acc.completedCreditsByCategory.getOrDefault(entry.getKey(), 0.0);
+                if (stats.differsFromRegular && completed + HONORS_EPSILON < honorsMin) {
+                    meetsDifference = false;
+                }
+                if (completed + HONORS_EPSILON < honorsMin) {
+                    meetsAllHonors = false;
+                }
+            }
+
+            if (acc.hasFailure) {
+                failureStudentIds.add(acc.studentId);
+            }
+
+            if (!acc.hasFailure && meetsDifference) {
+                eligibleStudentIds.add(acc.studentId);
+            }
+            if (!acc.hasFailure && meetsAllHonors) {
+                honorsStudentIds.add(acc.studentId);
+            }
+            if (acc.hasFailure && meetsAllHonors) {
+                failedButMetHonorsIds.add(acc.studentId);
+            }
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("hasHonorsConfigured", true);
+        response.put("programId", programId);
+        response.put("totalStudents", totalStudents);
+        response.put("studentsWithoutFailure", studentsWithoutFailure);
+        response.put("honorsCategoryCount", categoryStats.size());
+        response.put("differenceCategoryCount", categoryStats.values().stream().filter(cs -> cs.differsFromRegular).count());
+        response.put("differenceCategories", differenceCategoryDisplay);
+        response.put("eligibleCount", eligibleStudentIds.size());
+        response.put("honorsAchieversCount", honorsStudentIds.size());
+        response.put("failedButMetHonorsCount", failedButMetHonorsIds.size());
+        response.put("studentsWithFailures", failureStudentIds.size());
+        response.put("eligibleStudents", summarizeStudents(eligibleStudentIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
+        response.put("honorsStudents", summarizeStudents(honorsStudentIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
+        response.put("failedButMetHonors", summarizeStudents(failedButMetHonorsIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
+        response.put("categories", categoryStats.values().stream()
+                .map(stats -> stats.toMap(studentAccumulators, MAX_CATEGORY_STUDENT_LIST))
+                .collect(Collectors.toList()));
+
+        return response;
+    }
+
+    private static String normalizeCategory(String categoryName) {
+        if (categoryName == null) return null;
+        String normalized = categoryName.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static boolean differsFromRegular(Double honorsMin, Double regularMin) {
+        if (honorsMin == null || regularMin == null) return false;
+        return Math.abs(honorsMin - regularMin) > HONORS_EPSILON;
+    }
+
+    private static List<Map<String, Object>> summarizeStudents(Collection<String> studentIds,
+                                                               Map<String, HonorsStudentAccumulator> accumulators,
+                                                               int limit) {
+        if (studentIds == null || studentIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> list = new ArrayList<>();
+        int count = 0;
+        for (String studentId : studentIds) {
+            if (studentId == null) continue;
+            HonorsStudentAccumulator acc = accumulators.get(studentId);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("studentId", studentId);
+            item.put("studentName", acc != null ? acc.studentName : null);
+            item.put("hasFailure", acc != null && acc.hasFailure);
+            list.add(item);
+            count++;
+            if (count >= limit) break;
+        }
+        return list;
+    }
+
+    private static class HonorsStudentAccumulator {
+        private final String studentId;
+        private String studentName;
+        private final boolean hasFailure;
+        private final Map<String, Double> completedCreditsByCategory = new HashMap<>();
+
+        private HonorsStudentAccumulator(String studentId, String studentName, boolean hasFailure) {
+            this.studentId = studentId;
+            this.studentName = studentName;
+            this.hasFailure = hasFailure;
+        }
+    }
+
+    private static class HonorsCategoryStats {
+        private final String categoryName;
+        private final Double minCredits;
+        private final Double honorsMinCredits;
+        private final boolean differsFromRegular;
+        private final Set<String> metHonorsStudentIds = new LinkedHashSet<>();
+        private final Set<String> notMetHonorsStudentIds = new LinkedHashSet<>();
+        private final Set<String> metRegularStudentIds = new LinkedHashSet<>();
+        private final Set<String> failedStudentIds = new LinkedHashSet<>();
+
+        private HonorsCategoryStats(String categoryName, Double minCredits, Double honorsMinCredits, boolean differsFromRegular) {
+            this.categoryName = categoryName;
+            this.minCredits = minCredits;
+            this.honorsMinCredits = honorsMinCredits;
+            this.differsFromRegular = differsFromRegular;
+        }
+
+        private Map<String, Object> toMap(Map<String, HonorsStudentAccumulator> accumulators, int limit) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("categoryName", categoryName);
+            map.put("minCredits", minCredits);
+            map.put("honorsMinCredits", honorsMinCredits);
+            map.put("differsFromRegular", differsFromRegular);
+            map.put("metHonorsCount", metHonorsStudentIds.size());
+            map.put("metRegularCount", metRegularStudentIds.size());
+            map.put("notMetHonorsCount", notMetHonorsStudentIds.size());
+            map.put("failedCount", failedStudentIds.size());
+            map.put("metHonorsStudents", summarizeStudents(metHonorsStudentIds, accumulators, limit));
+            map.put("notMetHonorsStudents", summarizeStudents(notMetHonorsStudentIds, accumulators, limit));
+            map.put("failedStudents", summarizeStudents(failedStudentIds, accumulators, limit));
+            return map;
+        }
     }
 
     // Get basic stats for dashboard
@@ -401,22 +660,67 @@ public class AdminInsightsService {
         } else {
             reqs = programCategoryRequirementRepository.findAll();
         }
-        return reqs.stream().map(r -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", r.getId());
-            if (r.getProgram() != null) {
-                m.put("programId", r.getProgram().getProgramId());
-                m.put("programCode", r.getProgram().getCode());
-                m.put("programName", r.getProgram().getName());
+        return reqs.stream().map(this::toRequirementMap).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public Map<String, Object> updateRequirementCredits(Long requirementId, Double minCredits, Double honorsMinCredits) {
+        ProgramCategoryRequirement requirement = programCategoryRequirementRepository.findById(requirementId)
+                .orElseThrow(() -> new IllegalArgumentException("ProgramCategoryRequirement not found for id=" + requirementId));
+
+        if (minCredits != null) {
+            requirement.setMinCredits(minCredits);
+        }
+        if (honorsMinCredits != null) {
+            requirement.setHonorsMinCredits(honorsMinCredits);
+        }
+
+        ProgramCategoryRequirement saved = programCategoryRequirementRepository.save(requirement);
+        return toRequirementMap(saved);
+    }
+
+    @Transactional
+    public List<Map<String, Object>> updateHonorsRequirements(List<HonorsRequirementUpdateRequest> updates) {
+        if (updates == null || updates.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (HonorsRequirementUpdateRequest update : updates) {
+            if (update == null || update.getRequirementId() == null) {
+                continue;
             }
-            if (r.getCategory() != null) {
-                m.put("categoryId", r.getCategory().getCategoryID());
-                m.put("categoryName", r.getCategory().getCategoryName());
-            }
-            m.put("minCourses", r.getMinCourses());
-            m.put("minCredits", r.getMinCredits());
-            return m;
-        }).collect(Collectors.toList());
+
+            ProgramCategoryRequirement requirement = programCategoryRequirementRepository.findById(update.getRequirementId())
+                    .orElseThrow(() -> new IllegalArgumentException("ProgramCategoryRequirement not found for id=" + update.getRequirementId()))
+                    ;
+
+            // Allow clearing honors requirement by passing null
+            requirement.setHonorsMinCredits(update.getHonorsMinCredits());
+
+            ProgramCategoryRequirement saved = programCategoryRequirementRepository.save(requirement);
+            results.add(toRequirementMap(saved));
+        }
+
+        return results;
+    }
+
+    private Map<String, Object> toRequirementMap(ProgramCategoryRequirement requirement) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", requirement.getId());
+        if (requirement.getProgram() != null) {
+            response.put("programId", requirement.getProgram().getProgramId());
+            response.put("programCode", requirement.getProgram().getCode());
+            response.put("programName", requirement.getProgram().getName());
+        }
+        if (requirement.getCategory() != null) {
+            response.put("categoryId", requirement.getCategory().getCategoryID());
+            response.put("categoryName", requirement.getCategory().getCategoryName());
+        }
+        response.put("minCourses", requirement.getMinCourses());
+        response.put("minCredits", requirement.getMinCredits());
+        response.put("honorsMinCredits", requirement.getHonorsMinCredits());
+        return response;
     }
 
     @Cacheable(cacheNames = "admin_api", key = "'listGrades:' + T(java.util.Objects).toString(#programId) + ':' + T(java.util.Objects).toString(#studentId)")

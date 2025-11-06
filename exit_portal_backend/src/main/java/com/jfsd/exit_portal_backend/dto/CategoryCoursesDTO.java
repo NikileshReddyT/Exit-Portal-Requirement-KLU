@@ -13,6 +13,8 @@ public class CategoryCoursesDTO {
     private double completedCredits;
     private List<StudentGrade> courses;
     private List<incompleteCategoryCourses> incompleteCourses;
+    private Double honorsMinCredits;
+    private boolean honorsRequirementMet;
 
     public CategoryCoursesDTO() {}
 
@@ -36,4 +38,10 @@ public class CategoryCoursesDTO {
 
     public List<incompleteCategoryCourses> getIncompleteCourses() { return incompleteCourses; }
     public void setIncompleteCourses(List<incompleteCategoryCourses> incompleteCourses) { this.incompleteCourses = incompleteCourses; }
+
+    public Double getHonorsMinCredits() { return honorsMinCredits; }
+    public void setHonorsMinCredits(Double honorsMinCredits) { this.honorsMinCredits = honorsMinCredits; }
+
+    public boolean isHonorsRequirementMet() { return honorsRequirementMet; }
+    public void setHonorsRequirementMet(boolean honorsRequirementMet) { this.honorsRequirementMet = honorsRequirementMet; }
 }

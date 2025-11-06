@@ -30,6 +30,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -239,6 +240,8 @@ public class StudentGradeBatchImportService {
             // Upsert Students: create any missing (password = BCrypt(studentId)), leave existing unchanged, and set program only if NULL
             Map<String, Student> existingStudents = studentRepository.findAllByStudentIdIn(studentIds)
                     .stream().collect(Collectors.toMap(Student::getStudentId, s -> s));
+            final ConcurrentHashMap<String, Boolean> failureByStudent = new ConcurrentHashMap<>();
+            existingStudents.forEach((sid, student) -> failureByStudent.put(sid, student.isHasAnyFailure()));
             // build name map from CSV second column if present
             Map<String, String> nameById = new HashMap<>();
             for (int i = 1; i < lines.size(); i++) {
@@ -260,7 +263,7 @@ public class StudentGradeBatchImportService {
                     .collect(Collectors.toMap(id -> id, id -> passwordEncoder.encode(id)));
                 long tHashMs = (System.nanoTime() - tHashStart) / 1_000_000;
                 log.info("Hashed passwords for {} new students in {} ms", toCreateIds.size(), tHashMs);
-                
+
                 List<String> idList = new ArrayList<>(toCreateIds);
                 jdbcTemplate.batchUpdate(insStudents, idList, idList.size(), (ps, sid) -> {
                     ps.setString(1, sid);
@@ -270,6 +273,7 @@ public class StudentGradeBatchImportService {
                 });
                 log.info("Created {} new students via JDBC INSERT IGNORE", idList.size());
             }
+            toCreateIds.forEach(id -> failureByStudent.putIfAbsent(id, Boolean.FALSE));
             // Set program_id only for students with NULL (existing semantics)
             if (programIdForOps != null && !studentIds.isEmpty()) {
                 final int CHUNK = 1000;
@@ -336,6 +340,10 @@ public class StudentGradeBatchImportService {
                             if (cell.isEmpty()) continue;
                             String gradeToken = extractGradeToken(cell);
                             if (gradeToken.isEmpty()) continue;
+                            if (!failureByStudent.getOrDefault(universityId, Boolean.FALSE)) {
+                                boolean hasFailAttempt = hasFailureAttempt(cell);
+                                if (hasFailAttempt) failureByStudent.put(universityId, Boolean.TRUE);
+                            }
                             rowUpdates.add(new ParsedUpdate(universityId, courseCode, gradeToken));
                         }
                         return rowUpdates.stream();
@@ -451,6 +459,27 @@ public class StudentGradeBatchImportService {
 
             messages.add("Results CSV processed. Created: " + createdKeys.size() + ", Updated: " + updatedKeys.size());
             messages.add("Note: year/semester will be set after registrations upload.");
+
+            if (!failureByStudent.isEmpty()) {
+                List<String> toUpdateFailure = failureByStudent.entrySet().stream()
+                        .filter(Map.Entry::getValue)
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.toList());
+                if (!toUpdateFailure.isEmpty()) {
+                    final int chunkSize = 1000;
+                    for (int i = 0; i < toUpdateFailure.size(); i += chunkSize) {
+                        List<String> chunk = toUpdateFailure.subList(i, Math.min(i + chunkSize, toUpdateFailure.size()));
+                        String placeholders = String.join(", ", java.util.Collections.nCopies(chunk.size(), "?"));
+                        String sql = "UPDATE students SET has_any_failure = 1 WHERE has_any_failure = 0 AND student_id IN (" + placeholders + ")";
+                        jdbcTemplate.update(con -> {
+                            java.sql.PreparedStatement ps = con.prepareStatement(sql);
+                            int idx = 1;
+                            for (String sid : chunk) ps.setString(idx++, sid);
+                            return ps;
+                        });
+                    }
+                }
+            }
 
             // Recompute category progress AFTER COMMIT to ensure Step 1 changes are visible
             Set<String> recomputeIds = new HashSet<>(affectedStudentIds);
@@ -643,15 +672,6 @@ public class StudentGradeBatchImportService {
                     latest.put(key, r);
                 }
             }
-
-            if (latest.isEmpty()) {
-                messages.add("No valid registrations found.");
-                return messages;
-            }
-
-            // affected student IDs
-            Set<String> studentIds = latest.values().stream().map(r -> r.uid).collect(Collectors.toSet());
-
             // preload courses
             Set<String> courseCodes = latest.values().stream().map(r -> r.code).collect(Collectors.toSet());
             Map<String, Courses> courseByCode = coursesRepository.findByCourseCodeIn(new ArrayList<>(courseCodes))
@@ -661,6 +681,11 @@ public class StudentGradeBatchImportService {
             // find unknown courses
             Set<String> missingCourseCodes = courseCodes.stream()
                     .filter(code -> !courseByCode.containsKey(code))
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+
+            // Collect student IDs appearing in the registrations payload
+            Set<String> studentIds = latest.values().stream()
+                    .map(r -> r.uid)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
             // counts computed after staging tmp table
@@ -871,6 +896,33 @@ public class StudentGradeBatchImportService {
             values.set(i, values.get(i) == null ? null : values.get(i).trim());
         }
         return values.toArray(new String[0]);
+    }
+
+    private boolean hasFailureAttempt(String cell) {
+        if (cell == null) return false;
+        String beforePipe = cell;
+        int pipeIdx = cell.indexOf('|');
+        if (pipeIdx >= 0) {
+            beforePipe = cell.substring(0, pipeIdx);
+        }
+        String[] attempts = beforePipe.split("/");
+        for (String attempt : attempts) {
+            if (attempt == null) continue;
+            String token = attempt.trim();
+            if (token.isEmpty()) continue;
+            int spaceIdx = token.indexOf(' ');
+            if (spaceIdx > 0) {
+                token = token.substring(0, spaceIdx);
+            }
+            int parenIdx = token.indexOf('(');
+            if (parenIdx > 0) {
+                token = token.substring(0, parenIdx);
+            }
+            if (isFailLike(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String extractGradeToken(String cell) {

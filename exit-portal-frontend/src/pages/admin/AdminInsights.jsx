@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
 import { useProgramContext } from '../../context/ProgramContext';
 import StatCard from '../../components/admin/StatCard';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, Cell } from 'recharts';
+import DataTable from '../../components/admin/DataTable';
 
 const SectionCard = ({ title, children, right }) => (
   <div className="bg-white rounded-lg shadow p-4 sm:p-6">
@@ -17,66 +17,100 @@ const SectionCard = ({ title, children, right }) => (
   </div>
 );
 
-const ProgressBar = ({ value, className = '' }) => (
-  <div className={`w-full h-2 bg-gray-200 rounded ${className}`}>
-    <div className="h-2 bg-blue-600 rounded" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
-  </div>
-);
-
-// Mini horizontal bar chart for category met% (compact, professional)
-const CategoryMiniBarChart = ({ data = [], height = 220 }) => {
-  const sorted = [...data]
-    .map((c) => ({ name: c.category, value: Math.round(Math.max(0, Math.min(1, c.metRate ?? 0)) * 100), rate: c.metRate ?? 0 }))
-    .sort((a, b) => b.value - a.value);
-  const color = (r) => `hsl(${Math.max(0, Math.min(120, Math.round(r * 120)))}, 70%, 45%)`;
-  const tf = (s) => (s && s.length > 18 ? `${s.slice(0, 18)}…` : s);
-  const rowH = 26;
-  const innerHeight = Math.max(160, Math.min(380, sorted.length * rowH + 40));
+const Pill = ({ children, tone = 'default' }) => {
+  const palette = {
+    default: 'bg-gray-100 text-gray-700',
+    success: 'bg-green-100 text-green-700',
+    warning: 'bg-amber-100 text-amber-700',
+    danger: 'bg-red-100 text-red-700',
+  };
   return (
-    <div className="w-full" style={{ height: height ?? innerHeight }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={sorted} layout="vertical" margin={{ top: 6, right: 16, bottom: 6, left: 6 }} barSize={16}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-          <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} tickFormatter={tf} />
-          <Tooltip formatter={(v) => [`${v}%`, 'Met Rate']} cursor={{ fill: 'rgba(59,130,246,0.08)' }} />
-          <Bar dataKey="value" radius={[4, 4, 4, 4]}>
-            {sorted.map((entry, idx) => (
-              <Cell key={`cell-${idx}`} fill={color(entry.rate)} />
-            ))}
-            <LabelList dataKey="value" position="right" formatter={(v) => `${v}%`} className="fill-gray-700 text-[10px]" />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${palette[tone] || palette.default}`}>
+      {children}
+    </span>
+  );
+};
+
+const StudentList = ({ title, students, emptyText, accent = 'default', onSelect, onExport, csvName }) => {
+  const limited = students.slice(0, 6);
+  const pulseTone = accent === 'success' ? 'text-green-700 bg-green-50' : accent === 'danger' ? 'text-red-700 bg-red-50' : 'text-gray-700 bg-gray-50';
+
+  return (
+    <div className="flex-1 min-w-[240px]">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-semibold text-gray-800">
+          {title}
+          <span className="ml-2 text-xs text-gray-500">({students.length})</span>
+        </h4>
+        {students.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onExport && onExport(students, csvName)}
+            className="text-xs font-medium text-red-600 hover:text-red-700"
+          >
+            Export CSV
+          </button>
+        )}
+      </div>
+      {students.length === 0 ? (
+        <div className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-4">{emptyText}</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {limited.map((student) => (
+            <div
+              key={student.studentId}
+              className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition cursor-pointer"
+              onClick={() => onSelect && onSelect(student)}
+            >
+              <div className="flex items-center justify-between">
+                <h5 className="font-medium text-gray-900 text-sm">{student.studentName || 'Unnamed'}</h5>
+                {student.hasFailure ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700">Has Failure</span>
+                ) : (
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${pulseTone}`}>Clear</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">{student.studentId}</p>
+            </div>
+          ))}
+          {students.length > limited.length && (
+            <div className="text-xs text-gray-500 text-center py-2 bg-gray-50 rounded">
+              Showing {limited.length} of {students.length}. Export CSV to view all.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
-const AdminInsights = () => {
+ 
+
+const formatNumber = (value) => {
+  if (value == null) return '—';
+  try {
+    return Number(value).toLocaleString();
+  } catch {
+    return String(value);
+  }
+};
+
+const AdminHonorsInsights = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { selectedProgramId, programInfo, setProgramContext } = useProgramContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [dashboard, setDashboard] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [programRanks, setProgramRanks] = useState([]);
+  const [honorsData, setHonorsData] = useState(null);
 
-  // Program scoping: from context or URL
   const urlParams = new URLSearchParams(location.search);
   const urlProgramId = urlParams.get('programId');
   const programId = selectedProgramId || urlProgramId;
-
-  const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
   const isSuperAdmin = user?.userType === 'SUPER_ADMIN';
+  const basePath = location.pathname.startsWith('/superadmin') ? '/superadmin' : '/admin';
 
-  const completionPct = useMemo(() => {
-    if (!dashboard?.stats) return 0;
-    const total = dashboard.stats.totalStudents || 0;
-    const completed = dashboard.stats.completedStudents || 0;
-    return total > 0 ? Math.round((completed / total) * 100) : 0;
-  }, [dashboard]);
+ 
 
   useEffect(() => {
     if (!user || (user.userType !== 'ADMIN' && user.userType !== 'SUPER_ADMIN')) {
@@ -89,44 +123,33 @@ const AdminInsights = () => {
     const load = async () => {
       try {
         setLoading(true);
+        setError('');
 
-        // Build URLs
         const params = new URLSearchParams();
         if (isSuperAdmin && programId) params.set('programId', programId);
         const query = params.toString();
 
-        const dashUrl = `${config.backendUrl}/api/v1/admin/dashboard${query ? `?${query}` : ''}`;
-        const statsUrl = `${config.backendUrl}/api/v1/admin/stats${query ? `?${query}` : ''}`;
-
-        const [dashRes, statsRes] = await Promise.all([
-          axios.get(dashUrl, { withCredentials: true }),
-          axios.get(statsUrl, { withCredentials: true }),
+        const honorsUrl = `${config.backendUrl}/api/v1/admin/insights/honors${query ? `?${query}` : ''}`;
+        const [honorsRes] = await Promise.all([
+          axios.get(honorsUrl, { withCredentials: true }),
         ]);
 
         if (isCancelled) return;
-        setDashboard(dashRes.data || {});
-        setStats(statsRes.data || {});
+        setHonorsData(honorsRes.data || {});
 
-        // Ensure program context loaded when scoped
         const effectiveProgramId = isSuperAdmin ? (programId || null) : (user?.programId || null);
         if (effectiveProgramId && (!programInfo || programInfo.programId != effectiveProgramId)) {
           try {
             const programRes = await axios.get(`${config.backendUrl}/api/v1/admin/programs/${effectiveProgramId}`, { withCredentials: true });
             if (!isCancelled) setProgramContext(effectiveProgramId, programRes.data);
-          } catch {}
-        }
-
-        // Only SUPER_ADMIN sees cross-program ranks
-        if (isSuperAdmin) {
-          try {
-            const rankRes = await axios.get(`${config.backendUrl}/api/v1/admin/programs/rank?limit=5&worstFirst=false`, { withCredentials: true });
-            if (!isCancelled) setProgramRanks(rankRes.data || []);
-          } catch {}
+          } catch (err) {
+            console.warn('Failed to load program context', err);
+          }
         }
       } catch (e) {
         if (!isCancelled) {
           console.error(e);
-          setError('Failed to load insights');
+          setError('Failed to load honors insights');
         }
       } finally {
         if (!isCancelled) setLoading(false);
@@ -134,137 +157,276 @@ const AdminInsights = () => {
     };
 
     load();
-    return () => { isCancelled = true; };
+    return () => {
+      isCancelled = true;
+    };
   }, [user, programId, isSuperAdmin, navigate, programInfo, setProgramContext]);
 
+  
+
+  const categories = useMemo(() => (
+    Array.isArray(honorsData?.categories) ? honorsData.categories : []
+  ), [honorsData]);
+
+  const eligibleStudents = useMemo(() => (
+    Array.isArray(honorsData?.eligibleStudents) ? honorsData.eligibleStudents : []
+  ), [honorsData]);
+
+  const honorsStudents = useMemo(() => (
+    Array.isArray(honorsData?.honorsStudents) ? honorsData.honorsStudents : []
+  ), [honorsData]);
+
+  const failedButMetHonors = useMemo(() => (
+    Array.isArray(honorsData?.failedButMetHonors) ? honorsData.failedButMetHonors : []
+  ), [honorsData]);
+
+  const achievedCohortCount = honorsStudents.length;
+  const eligibleCohortCount = eligibleStudents.length;
+  const failureCohortCount = failedButMetHonors.length;
+
+  const handleStudentSelect = useCallback((student) => {
+    if (!student?.studentId) return;
+    const target = `${basePath}/students`;
+    const params = new URLSearchParams();
+    params.set('studentId', student.studentId);
+    if (isSuperAdmin && programId) params.set('programId', programId);
+    navigate(`${target}?${params}`);
+  }, [navigate, basePath, isSuperAdmin, programId]);
+
+  const handleExportCsv = useCallback((rows, filename) => {
+    if (!rows?.length) return;
+    const header = ['studentId', 'studentName', 'hasFailure'];
+    const body = rows.map((row) => [row.studentId ?? '', (row.studentName ?? '').replaceAll('"', '""'), row.hasFailure ? 'true' : 'false']);
+    const csv = [header.join(','), ...body.map((cols) => cols.map((col, idx) => idx === 1 ? `"${col}"` : col).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }, []);
+
+  const cohortRows = useMemo(() => {
+    const toRows = (arr, cohort) => (Array.isArray(arr) ? arr : []).map((s) => ({
+      studentName: s.studentName || 'Unnamed',
+      studentId: s.studentId,
+      hasFailure: !!s.hasFailure,
+      cohort,
+    }));
+    return [
+      ...toRows(honorsStudents, 'Honors Achieved'),
+      ...toRows(eligibleStudents, 'Eligible'),
+      ...toRows(failedButMetHonors, 'Met Honors + Failure'),
+    ];
+  }, [honorsStudents, eligibleStudents, failedButMetHonors]);
+
+  const [showAchieved, setShowAchieved] = useState(true);
+  const [showEligible, setShowEligible] = useState(true);
+  const [showFailure, setShowFailure] = useState(true);
+  const filteredCohortRows = useMemo(() => {
+    const filtered = cohortRows.filter((r) =>
+      (r.cohort === 'Honors Achieved' && showAchieved) ||
+      (r.cohort === 'Eligible' && showEligible) ||
+      (r.cohort === 'Met Honors + Failure' && showFailure)
+    );
+    const order = { 'Honors Achieved': 0, 'Eligible': 1, 'Met Honors + Failure': 2 };
+    return [...filtered].sort((a, b) => {
+      const oa = order[a.cohort] ?? 99;
+      const ob = order[b.cohort] ?? 99;
+      if (oa !== ob) return oa - ob;
+      const na = String(a.studentName || '');
+      const nb = String(b.studentName || '');
+      return na.localeCompare(nb);
+    });
+  }, [cohortRows, showAchieved, showEligible, showFailure]);
+
+  const cohortColumns = useMemo(() => (
+    [
+      { key: 'studentName', label: 'Student', sortable: true },
+      { key: 'studentId', label: 'ID', sortable: true },
+      { key: 'cohort', label: 'Cohort', render: (val) => (val === 'Honors Achieved' ? <Pill tone="success">{val}</Pill> : val === 'Met Honors + Failure' ? <Pill tone="danger">{val}</Pill> : <Pill>{val}</Pill>) },
+    ]
+  ), []);
+
+  const categoriesRows = useMemo(() => {
+    return (Array.isArray(categories) ? categories : []).map((c) => ({
+      ...c,
+      // keep only counts; remove percentage derivations for simpler, useful insight
+      metHonorsCount: c.metHonorsCount || 0,
+      notMetHonorsCount: c.notMetHonorsCount || 0,
+      metRegularCount: c.metRegularCount || 0,
+    }));
+  }, [categories]);
+
+  const [showDiffersOnly, setShowDiffersOnly] = useState(false);
+
+  const filteredCategoriesRows = useMemo(() => {
+    if (!showDiffersOnly) return categoriesRows;
+    return (categoriesRows || []).filter(r => !!r.differsFromRegular);
+  }, [categoriesRows, showDiffersOnly]);
+
+  const categoryColumnsDense = [
+    { key: 'categoryName', label: 'Category', sortable: true },
+    { key: 'minCredits', label: 'Min', render: (v) => formatNumber(v) },
+    { key: 'honorsMinCredits', label: 'Honors Min', render: (v) => v != null ? formatNumber(v) : '—' },
+    { key: 'metHonorsCount', label: 'Met Honors', render: (v) => formatNumber(v) },
+    { key: 'metRegularCount', label: 'Met Regular', render: (v) => formatNumber(v) },
+    { key: 'differsFromRegular', label: 'Differs', render: (val) => val ? <Pill tone="warning">Yes</Pill> : <Pill>No</Pill> },
+  ];
+
+  
+
+  // removed card-based cohort lists in favor of a dense table below
+
+  
+
+  
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-900 mx-auto" />
-          <p className="mt-4 text-gray-600">Loading insights...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-700 mx-auto" />
+          <p className="mt-4 text-gray-600">Loading honors insights...</p>
         </div>
       </div>
     );
   }
+
   if (error) {
     return <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4">{error}</div>;
   }
 
-  const catSummaries = Array.isArray(dashboard?.categorySummaries) ? dashboard.categorySummaries : [];
-  const topCats = [...catSummaries].sort((a,b) => (b.metRate ?? 0) - (a.metRate ?? 0)).slice(0, 5);
-  const bottomCats = [...catSummaries].sort((a,b) => (a.metRate ?? 0) - (b.metRate ?? 0)).slice(0, 5);
+  if (!honorsData?.hasHonorsConfigured) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Honors Insights</h2>
+          <p className="text-sm text-gray-600">
+            Configure honors minimum credits in the <button onClick={() => navigate('/admin/categories')} className="text-red-600 hover:underline">Categories</button> page to enable honors reporting.
+          </p>
+        </div>
+        <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center">
+          <p className="text-gray-700">
+            No honors requirements have been set yet. Once honors minimum credits are defined, this page will show eligibility and completion insights.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
+  return <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Insights Overview</h2>
-        <p className="text-sm text-gray-600">Actionable snapshot{programInfo ? ` for ${programInfo.code}` : ''}</p>
+        <h2 className="text-2xl font-bold text-gray-900">Honors Insights</h2>
+        <p className="text-sm text-gray-600">
+          Snapshot of honors eligibility{programInfo ? ` for ${programInfo.code}` : ''} across configured categories.
+        </p>
       </div>
 
-      {/* KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 items-stretch">
-        <StatCard title="Students" value={dashboard?.stats?.totalStudents} color="blue" subtitle="Total" />
-        <StatCard title="Completed" value={dashboard?.stats?.completedStudents} color="green" subtitle="Met all categories" />
-        <StatCard title="In Progress" value={dashboard?.stats?.inProgressStudents} color="yellow" subtitle="Still working" />
-        <StatCard title="Courses" value={stats?.totalCourses} color="purple" subtitle="Catalog" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 items-stretch">
+        <StatCard title="Students" value={honorsData?.totalStudents} color="purple" subtitle="Total in scope" />
+        <StatCard title="No Failures" value={honorsData?.studentsWithoutFailure} color="blue" subtitle="Eligible pool" />
+        <StatCard title="Honors-Eligible" value={honorsData?.eligibleCount} color="green" subtitle="Met diff categories" />
+        <StatCard title="Honors Achieved" value={honorsData?.honorsAchieversCount} color="red" subtitle="Met all honors credits" />
       </div>
 
-      {/* Completion snapshot */}
-      <SectionCard title="Program Completion Snapshot" right={
-        <button
-          className="text-sm text-blue-700 hover:underline"
-          onClick={() => navigate(`${basePath}/progress${programId ? `?programId=${programId}` : ''}`)}
-        >
-          View Progress »
-        </button>
-      }>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-gray-700">Completion Rate</div>
-              <div className="text-sm font-medium text-gray-900">{completionPct}%</div>
-            </div>
-            <ProgressBar value={completionPct} />
-            <div className="mt-3 grid grid-cols-2 text-sm">
-              <div className="text-gray-600">Completed</div>
-              <div className="text-right text-gray-900">{dashboard?.stats?.completedStudents || 0}</div>
-              <div className="text-gray-600">In Progress</div>
-              <div className="text-right text-gray-900">{dashboard?.stats?.inProgressStudents || 0}</div>
-            </div>
-          </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Categories</span>
-              <span className="font-medium text-gray-900">{stats?.totalCategories ?? '-'}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Courses</span>
-              <span className="font-medium text-gray-900">{stats?.totalCourses ?? '-'}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">Grades</span>
-              <span className="font-medium text-gray-900">{stats?.totalGrades ?? '-'}</span>
-            </div>
-          </div>
+      <SectionCard title="Quick Actions">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => navigate('/admin/categories')}
+            className="px-3 py-2 border rounded-lg bg-white hover:bg-gray-50 text-left"
+          >
+            Manage Honors Requirements
+          </button>
+          <button
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (isSuperAdmin && programId) params.set('programId', programId);
+              navigate(params.toString() ? `${basePath}/students?${params}` : `${basePath}/students`);
+            }}
+            className="px-3 py-2 border rounded-lg bg-white hover:bg-gray-50 text-left"
+          >
+            Open Student Directory
+          </button>
         </div>
       </SectionCard>
 
-      {/* Category performance */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SectionCard title="Top Categories by Met %" right={<button className="text-sm text-blue-700 hover:underline" onClick={() => navigate(`${basePath}/categories-summary${programId ? `?programId=${programId}` : ''}`)}>View All »</button>}>
-          {topCats.length === 0 ? (
-            <div className="text-sm text-gray-500">No data</div>
-          ) : (
-            <CategoryMiniBarChart data={topCats} />
-          )}
-        </SectionCard>
-
-        <SectionCard title="Bottleneck Categories" right={<button className="text-sm text-blue-700 hover:underline" onClick={() => navigate(`${basePath}/categories-summary${programId ? `?programId=${programId}` : ''}`)}>Investigate »</button>}>
-          {(dashboard?.bottlenecks || bottomCats).length === 0 ? (
-            <div className="text-sm text-gray-500">No data</div>
-          ) : (
-            <CategoryMiniBarChart data={(dashboard?.bottlenecks || bottomCats)} />
-          )}
-        </SectionCard>
-      </div>
-
-      {/* Quick drilldowns */}
-      <SectionCard title="Quick Drilldowns">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <button onClick={() => navigate(`${basePath}/grades${programId ? `?programId=${programId}` : ''}`)} className="px-4 py-2.5 bg-white border rounded-lg hover:bg-gray-50 shadow-sm text-sm">Explore Grades</button>
-          <button onClick={() => navigate(`${basePath}/progress${programId ? `?programId=${programId}` : ''}`)} className="px-4 py-2.5 bg-white border rounded-lg hover:bg-gray-50 shadow-sm text-sm">Explore Progress</button>
-          <button onClick={() => navigate(`${basePath}/students${programId ? `?programId=${programId}` : ''}`)} className="px-4 py-2.5 bg-white border rounded-lg hover:bg-gray-50 shadow-sm text-sm">Students</button>
-          <button onClick={() => navigate(`${basePath}/categories${programId ? `?programId=${programId}` : ''}`)} className="px-4 py-2.5 bg-white border rounded-lg hover:bg-gray-50 shadow-sm text-sm">Categories</button>
-          <button onClick={() => navigate(`${basePath}/courses${programId ? `?programId=${programId}` : ''}`)} className="px-4 py-2.5 bg-white border rounded-lg hover:bg-gray-50 shadow-sm text-sm">Courses</button>
-          <button onClick={() => navigate(`${basePath}/categories-summary${programId ? `?programId=${programId}` : ''}`)} className="px-4 py-2.5 bg-white border rounded-lg hover:bg-gray-50 shadow-sm text-sm">Categories Summary</button>
-        </div>
+      <SectionCard
+        title="Student Cohorts"
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAchieved((v) => !v)}
+              className={`btn px-2 py-1 rounded-full text-xs font-medium border ${showAchieved ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-700 border-gray-200'}`}
+              title="Toggle Achieved cohort"
+            >
+              Achieved {achievedCohortCount}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEligible((v) => !v)}
+              className={`btn px-2 py-1 rounded-full text-xs font-medium border ${showEligible ? 'bg-gray-100 text-gray-800 border-gray-200' : 'bg-white text-gray-700 border-gray-200'}`}
+              title="Toggle Eligible cohort"
+            >
+              Eligible {eligibleCohortCount}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFailure((v) => !v)}
+              className={`btn px-2 py-1 rounded-full text-xs font-medium border ${showFailure ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-700 border-gray-200'}`}
+              title="Toggle Met Honors + Failure cohort"
+            >
+              Failure {failureCohortCount}
+            </button>
+            
+          </div>
+        }
+      >
+        
+        <DataTable
+          rows={filteredCohortRows}
+          columns={cohortColumns}
+          onRowClick={(row) => handleStudentSelect({ studentId: row.studentId })}
+          loading={false}
+          error={null}
+          emptyText="No students to show"
+          enableSearch={true}
+          enableColumnFilters={false}
+          compact={true}
+          cardTitleKey="studentName"
+        />
       </SectionCard>
 
-      {/* Program rankings for Super Admin */}
-      {isSuperAdmin && (
-        <SectionCard title="Top Programs by Completion">
-          {programRanks.length === 0 ? (
-            <div className="text-sm text-gray-500">No data</div>
-          ) : (
-            <div className="space-y-3">
-              {programRanks.map((p) => (
-                <div key={p.programId} className="border rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium text-gray-900">{p.programCode} — {p.programName}</div>
-                    <div className="text-sm text-gray-700">{Math.round((p.completionRate || 0) * 100)}%</div>
-                  </div>
-                  <ProgressBar value={Math.round((p.completionRate || 0) * 100)} className="mt-2" />
-                  <div className="mt-1 text-xs text-gray-600">Completed {p.completedStudents}/{p.totalStudents}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
-      )}
-    </div>
-  );
+      <SectionCard
+        title="Category Analysis"
+        right={
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">Total {categoriesRows.length}</span>
+            <span className="px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-800">Differs {categoriesRows.filter(r=>r.differsFromRegular).length}</span>
+            <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">Matches {categoriesRows.filter(r=>!r.differsFromRegular).length}</span>
+            <button
+              type="button"
+              onClick={() => setShowDiffersOnly((v) => !v)}
+              className={`btn px-2 py-1 rounded-full text-xs font-medium border ${showDiffersOnly ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-white text-gray-700 border-gray-200'}`}
+            >
+              Differs only
+            </button>
+          </div>
+        }
+      >
+        <DataTable
+          rows={filteredCategoriesRows}
+          columns={categoryColumnsDense}
+          loading={false}
+          error={null}
+          emptyText="No honors categories found"
+          enableSearch={true}
+          enableColumnFilters={false}
+          compact={true}
+        />
+      </SectionCard>
+
+    </div>;
 };
 
-export default AdminInsights;
+export default AdminHonorsInsights;

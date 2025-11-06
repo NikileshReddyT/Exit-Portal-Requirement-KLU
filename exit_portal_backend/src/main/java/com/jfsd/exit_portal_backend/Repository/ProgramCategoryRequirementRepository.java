@@ -22,4 +22,11 @@ public interface ProgramCategoryRequirementRepository extends JpaRepository<Prog
     
     @Query("SELECT pcr FROM ProgramCategoryRequirement pcr WHERE pcr.program.code = :programCode")
     List<ProgramCategoryRequirement> findByProgramCode(@Param("programCode") String programCode);
+
+    @Query("SELECT pcr FROM ProgramCategoryRequirement pcr WHERE pcr.program.id = :programId AND pcr.honorsMinCredits IS NOT NULL")
+    List<ProgramCategoryRequirement> findHonorsRequirementsByProgramId(@Param("programId") Long programId);
+
+    List<ProgramCategoryRequirement> findByProgram_ProgramId(Long programId);
+
+    List<ProgramCategoryRequirement> findByHonorsMinCreditsIsNotNull();
 }

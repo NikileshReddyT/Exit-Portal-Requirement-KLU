@@ -27,6 +27,9 @@ public class Student {
     @JoinColumn(name = "program_id", nullable = true)
     private Program program;
 
+    @Column(name = "has_any_failure", nullable = false)
+    private boolean hasAnyFailure = false;
+
     public Student() {}
 
     public Student(String studentId, String studentName, String password) {
@@ -65,5 +68,13 @@ public class Student {
 
     public void setProgram(Program program) {
         this.program = program;
+    }
+
+    public boolean isHasAnyFailure() {
+        return hasAnyFailure;
+    }
+
+    public void setHasAnyFailure(boolean hasAnyFailure) {
+        this.hasAnyFailure = hasAnyFailure;
     }
 }

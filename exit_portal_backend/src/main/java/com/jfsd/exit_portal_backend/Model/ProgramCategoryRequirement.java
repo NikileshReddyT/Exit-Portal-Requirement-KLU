@@ -31,6 +31,9 @@ public class ProgramCategoryRequirement {
     @Column(name = "min_credits", nullable = false)
     private Double minCredits;
 
+    @Column(name = "honors_min_credits")
+    private Double honorsMinCredits;
+
     // Default constructor
     public ProgramCategoryRequirement() {}
 
@@ -83,6 +86,14 @@ public class ProgramCategoryRequirement {
         this.minCredits = minCredits;
     }
 
+    public Double getHonorsMinCredits() {
+        return honorsMinCredits;
+    }
+
+    public void setHonorsMinCredits(Double honorsMinCredits) {
+        this.honorsMinCredits = honorsMinCredits;
+    }
+
     @Override
     public String toString() {
         return "ProgramCategoryRequirement{" +
@@ -91,6 +102,7 @@ public class ProgramCategoryRequirement {
                 ", category=" + (category != null ? category.getCategoryName() : null) +
                 ", minCourses=" + minCourses +
                 ", minCredits=" + minCredits +
+                ", honorsMinCredits=" + honorsMinCredits +
                 '}';
     }
 }

@@ -2,6 +2,7 @@ package com.jfsd.exit_portal_backend.Controller;
 
 import com.jfsd.exit_portal_backend.security.JwtUtil;
 import com.jfsd.exit_portal_backend.Service.AdminInsightsService;
+import com.jfsd.exit_portal_backend.dto.honors.HonorsRequirementBulkUpdateRequest;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -256,6 +257,40 @@ public class AdminInsightsController {
         return ResponseEntity.ok(adminInsightsService.listRequirements(programId));
     }
 
+    @GetMapping("/insights/honors")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> getHonorsOverview(@RequestParam(value = "programId", required = false) Long programId) {
+        return ResponseEntity.ok(adminInsightsService.getHonorsOverview(programId));
+    }
+
+    @PatchMapping("/data/requirements/{requirementId}")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> updateRequirementCredits(
+            @PathVariable("requirementId") Long requirementId,
+            @RequestBody Map<String, Object> payload) {
+        Double minCredits = payload.containsKey("minCredits") ? convertToDouble(payload.get("minCredits")) : null;
+        Double honorsMinCredits = payload.containsKey("honorsMinCredits") ? convertToDouble(payload.get("honorsMinCredits")) : null;
+        Map<String, Object> result = adminInsightsService.updateRequirementCredits(requirementId, minCredits, honorsMinCredits);
+        if (cacheManager != null && cacheManager.getCache("admin_api") != null) {
+            cacheManager.getCache("admin_api").clear();
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/data/requirements/honors")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<Map<String, Object>> bulkUpdateHonors(@RequestBody HonorsRequirementBulkUpdateRequest payload) {
+        List<Map<String, Object>> results = adminInsightsService.updateHonorsRequirements(
+                payload != null ? payload.getUpdates() : null);
+        if (cacheManager != null && cacheManager.getCache("admin_api") != null) {
+            cacheManager.getCache("admin_api").clear();
+        }
+        Map<String, Object> response = new java.util.HashMap<>();
+        response.put("updatedCount", results != null ? results.size() : 0);
+        response.put("items", results);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/data/grades")
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<List<Map<String, Object>>> listGrades(
@@ -385,5 +420,16 @@ public class AdminInsightsController {
         String jwt = getJwtFromCookie(request);
         if (jwt != null && !jwt.isBlank()) return jwt;
         return getJwtFromAuthorizationHeader(request);
+    }
+
+    private Double convertToDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+        if (value instanceof String str && !str.isBlank()) {
+            try {
+                return Double.parseDouble(str.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+        return null;
     }
 }

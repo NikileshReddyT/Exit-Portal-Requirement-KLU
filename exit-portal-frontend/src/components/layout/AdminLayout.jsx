@@ -214,7 +214,7 @@ const AdminLayout = () => {
     {
       title: 'Insights',
       items: [
-        { to: `${basePath}/insights`, label: 'Insights Overview', icon: <FiBarChart2 />, end: true },
+        { to: `${basePath}/insights`, label: 'Honors Insights', icon: <FiBarChart2 />, end: true },
         { to: `${basePath}/categories-summary`, label: 'Categories Summary', icon: <FiCompass /> },
         { to: `${basePath}/insights/student-category-matrix`, label: 'Student Category Records', icon: <FiBarChart2 /> },
         { to: `${basePath}/analytics`, label: 'AI Query System', icon: <FiDatabase /> },

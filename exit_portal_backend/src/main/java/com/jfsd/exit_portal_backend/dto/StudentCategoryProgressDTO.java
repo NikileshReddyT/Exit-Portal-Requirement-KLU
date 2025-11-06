@@ -8,13 +8,25 @@ public class StudentCategoryProgressDTO {
     private double registeredCredits;
     private long completedCourses;
     private double completedCredits;
+    private Double honorsMinCredits;
+    private boolean honorsRequirementMet;
 
     public StudentCategoryProgressDTO() {}
 
-    public StudentCategoryProgressDTO(String categoryName, int minRequiredCourses, double minRequiredCredits, long registeredCourses, Double registeredCredits, long completedCourses, Double completedCredits) {
+    public StudentCategoryProgressDTO(String categoryName,
+                                     int minRequiredCourses,
+                                     double minRequiredCredits,
+                                     Double honorsMinCredits,
+                                     boolean honorsRequirementMet,
+                                     long registeredCourses,
+                                     Double registeredCredits,
+                                     long completedCourses,
+                                     Double completedCredits) {
         this.categoryName = categoryName;
         this.minRequiredCourses = minRequiredCourses;
         this.minRequiredCredits = minRequiredCredits;
+        this.honorsMinCredits = honorsMinCredits;
+        this.honorsRequirementMet = honorsRequirementMet;
         this.registeredCourses = registeredCourses;
         this.registeredCredits = (registeredCredits != null) ? registeredCredits : 0.0;
         this.completedCourses = completedCourses;
@@ -41,4 +53,10 @@ public class StudentCategoryProgressDTO {
 
     public double getCompletedCredits() { return completedCredits; }
     public void setCompletedCredits(double completedCredits) { this.completedCredits = completedCredits; }
+
+    public Double getHonorsMinCredits() { return honorsMinCredits; }
+    public void setHonorsMinCredits(Double honorsMinCredits) { this.honorsMinCredits = honorsMinCredits; }
+
+    public boolean isHonorsRequirementMet() { return honorsRequirementMet; }
+    public void setHonorsRequirementMet(boolean honorsRequirementMet) { this.honorsRequirementMet = honorsRequirementMet; }
 }
