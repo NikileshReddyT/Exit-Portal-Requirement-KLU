@@ -98,11 +98,10 @@ const AdminStudentReport = () => {
   const filterYearNorm = normalizeYear(data?.filterYear ?? data?.year ?? '');
   const filterSemNorm = normalizeSem(data?.filterSemester ?? data?.semester ?? '');
 
-  // Registered detection - exact same as PdfDownloadButton
+  // Registered detection: ONLY when promotion is 'R'
   const isRegistered = (c) => {
-    const grade = (c.grade ?? '').toString().trim();
     const promo = (c.promotion ?? '').toString().toUpperCase();
-    return grade === '' || promo === 'R';
+    return promo === 'R';
   };
 
   useEffect(() => {
@@ -280,25 +279,22 @@ const AdminStudentReport = () => {
                       <div className="text-xs text-gray-500 mb-1">CGPA</div>
                       <div className="text-lg font-bold text-gray-900">
                         {(() => {
-                          // CGPA Calculation: FLOOR((SUM(grade_point * credits) / SUM(credits)) * 100 + 0.5) / 100
-                          // This applies Java-style rounding (if 3rd decimal >= 5, the 2nd decimal rounds up)
-                          const passedCourses = (data.categories || [])
-                            .flatMap(cat => (cat.courses || []))
-                            .filter(c => c.promotion === 'P' && c.gradePoint != null && c.credits != null);
-                          
-                          if (passedCourses.length === 0) return '—';
-                          
-                          const totalWeightedPoints = passedCourses.reduce(
-                            (sum, c) => sum + (c.gradePoint * c.credits), 0
-                          );
-                          const totalCredits = passedCourses.reduce(
-                            (sum, c) => sum + c.credits, 0
-                          );
-                          
-                          if (totalCredits === 0) return '0.00 / 10.0';
-                          
-                          const rawCgpa = totalWeightedPoints / totalCredits;
-                          // Java-style rounding: FLOOR(value * 100 + 0.5) / 100
+                          // CGPA Calculation:
+                          // Numerator: sum(gradePoint * credits) for courses with promotion === 'P'
+                          // Denominator: sum(credits) for ALL non-'R' attempts (completed/failed/etc.)
+                          // Java-style rounding at 2 decimals.
+                          const allCourses = (data.categories || []).flatMap(cat => (cat.courses || []));
+                          const passed = allCourses.filter(c => String(c.promotion || '').toUpperCase() === 'P' && c.gradePoint != null && c.credits != null);
+                          const attemptedNonR = allCourses.filter(c => String(c.promotion || '').toUpperCase() !== 'R' && c.credits != null);
+
+                          if (attemptedNonR.length === 0) return '—';
+
+                          const totalWeightedPoints = passed.reduce((sum, c) => sum + (Number(c.gradePoint) * Number(c.credits)), 0);
+                          const denomCredits = attemptedNonR.reduce((sum, c) => sum + Number(c.credits), 0);
+
+                          if (denomCredits === 0) return '0.00 / 10.0';
+
+                          const rawCgpa = totalWeightedPoints / denomCredits;
                           const cgpa = (Math.floor(rawCgpa * 100 + 0.5) / 100).toFixed(2);
                           return `${cgpa} / 10.0`;
                         })()}
@@ -360,16 +356,15 @@ const AdminStudentReport = () => {
                 <div className="space-y-3">
                   {(data.categoryProgress || [])
                     .map((cp) => {
-                      // Calculate status first for sorting
+                      // Calculate status first for sorting (registered strictly by promotion 'R')
                       const reqC = Number(cp.minRequiredCourses) || 0;
-                      const regC = Number(cp.registeredCourses) || 0;
                       const doneC = Number(cp.completedCourses) || 0;
                       const reqCr = Number(cp.minRequiredCredits) || 0;
-                      const regCr = Number(cp.registeredCredits) || 0;
                       const doneCr = Number(cp.completedCredits) || 0;
-                      // Actual registered = registered - completed (pending registrations only)
-                      const actualRegC = Math.max(0, regC - doneC);
-                      const actualRegCr = Math.max(0, regCr - doneCr);
+                      const cat = categoriesByName.get(cp.categoryName);
+                      const regList = (cat?.courses || []).filter(c => String(c.promotion || '').toUpperCase() === 'R');
+                      const actualRegC = regList.length;
+                      const actualRegCr = regList.reduce((s, c) => s + (Number(c.credits) || 0), 0);
                       const requirementMet = (doneC >= reqC) && (doneCr >= reqCr);
                       const onTrack = !requirementMet && (doneC + actualRegC) >= reqC && (doneCr + actualRegCr) >= reqCr;
                       const statusOrder = requirementMet ? 3 : onTrack ? 2 : 1; // 1=At Risk, 2=On Track, 3=Complete
@@ -378,18 +373,18 @@ const AdminStudentReport = () => {
                     .sort((a, b) => a.statusOrder - b.statusOrder) // Sort: At Risk → On Track → Complete
                     .map((cp, idx) => {
                     const reqC = Number(cp.minRequiredCourses) || 0;
-                    const regC = Number(cp.registeredCourses) || 0;
                     const doneC = Number(cp.completedCourses) || 0;
                     const reqCr = Number(cp.minRequiredCredits) || 0;
-                    const regCr = Number(cp.registeredCredits) || 0;
                     const doneCr = Number(cp.completedCredits) || 0;
-                    // Actual registered = registered - completed (pending registrations only)
-                    const actualRegC = Math.max(0, regC - doneC);
-                    const actualRegCr = Math.max(0, regCr - doneCr);
+                    // Resolve category once
+                    const cat = categoriesByName.get(cp.categoryName);
+                    // Registered strictly by promotion 'R'
+                    const regList = (cat?.courses || []).filter(c => String(c.promotion || '').toUpperCase() === 'R');
+                    const actualRegC = regList.length;
+                    const actualRegCr = regList.reduce((s, c) => s + (Number(c.credits) || 0), 0);
                     const pctComplete = reqC > 0 ? (doneC / reqC) * 100 : 100;
                     // Total progress includes both completed and registered
                     const totalPct = reqC > 0 ? ((doneC + actualRegC) / reqC) * 100 : 0;
-                    const cat = categoriesByName.get(cp.categoryName);
 
                     const requirementMet = (doneC >= reqC) && (doneCr >= reqCr);
                     const remainingCourses = Math.max(0, reqC - doneC - actualRegC);
@@ -493,11 +488,7 @@ const AdminStudentReport = () => {
                                 const requirementMetCat = (doneCourses >= reqCourses) && (doneCredits >= reqCredits);
                                 const completed = Array.isArray(cat.courses) ? [...cat.courses] : [];
                                 const availableRaw = Array.isArray(cat.incompleteCourses) ? [...cat.incompleteCourses] : [];
-                                const isRegistered = (c) => {
-                                  const grade = (c.grade ?? '').toString().trim();
-                                  const promo = (c.promotion ?? '').toString().toUpperCase();
-                                  return grade === '' || promo === 'R';
-                                };
+                                const isRegistered = (c) => String(c.promotion || '').toUpperCase() === 'R';
                                 const registeredList = completed.filter(isRegistered);
                                 const registeredCount = registeredList.length;
                                 const registeredCredits = registeredList.reduce((s, c) => s + (Number(c.credits) || 0), 0);

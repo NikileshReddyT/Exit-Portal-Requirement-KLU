@@ -99,10 +99,21 @@ public class FrontendService {
                 String categoryName = scp.getCategoryName();
                 String normCat = categoryName != null ? categoryName.trim().toLowerCase() : "";
 
-                // Registered metrics from preloaded grades
+                // Registered metrics from preloaded grades (historical: all attempts)
                 List<StudentGrade> registeredGrades = gradesByCategory.getOrDefault(normCat, java.util.Collections.emptyList());
                 long registeredCourses = registeredGrades.size();
                 double registeredCredits = registeredGrades.stream()
+                        .map(StudentGrade::getCredits)
+                        .filter(Objects::nonNull)
+                        .mapToDouble(Double::doubleValue)
+                        .sum();
+
+                // New: strictly current pending registrations (promotion == 'R')
+                long pendingRegisteredCourses = registeredGrades.stream()
+                        .filter(g -> g.getPromotion() != null && "R".equalsIgnoreCase(g.getPromotion()))
+                        .count();
+                double pendingRegisteredCredits = registeredGrades.stream()
+                        .filter(g -> g.getPromotion() != null && "R".equalsIgnoreCase(g.getPromotion()))
                         .map(StudentGrade::getCredits)
                         .filter(Objects::nonNull)
                         .mapToDouble(Double::doubleValue)
@@ -127,6 +138,9 @@ public class FrontendService {
                         completedCourses,
                         completedCredits
                 );
+                // Backward compatible enrichment with pending registration metrics
+                dto.setPendingRegisteredCourses(pendingRegisteredCourses);
+                dto.setPendingRegisteredCredits(pendingRegisteredCredits);
                 result.add(dto);
             }
             return result;

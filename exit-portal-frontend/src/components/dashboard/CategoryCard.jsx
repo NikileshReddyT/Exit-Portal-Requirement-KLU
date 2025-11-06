@@ -22,9 +22,11 @@ const CategoryCard = ({ category, index }) => {
     const doneCr = completedCredits;
     const regCr = registeredCredits;
     
-    // Actual registered = registered - completed (pending registrations only)
-    const actualRegC = Math.max(0, regC - doneC);
-    const actualRegCr = Math.max(0, regCr - doneCr);
+    // Prefer backend-provided pending registrations (promotion=='R'); fallback to aggregate inference
+    const prc = category?.pendingRegisteredCourses;
+    const prcr = category?.pendingRegisteredCredits;
+    const actualRegC = Number.isFinite(prc) ? prc : Math.max(0, regC - doneC);
+    const actualRegCr = Number.isFinite(prcr) ? prcr : Math.max(0, regCr - doneCr);
     
     const pctComplete = reqC > 0 ? (doneC / reqC) * 100 : 100;
     const totalPct = reqC > 0 ? ((doneC + actualRegC) / reqC) * 100 : 0;

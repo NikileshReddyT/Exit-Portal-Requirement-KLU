@@ -11,6 +11,10 @@ public class StudentCategoryProgressDTO {
     private Double honorsMinCredits;
     private boolean honorsRequirementMet;
 
+    // New: strictly current registrations (promotion == 'R')
+    private Long pendingRegisteredCourses; // nullable for backward compat
+    private Double pendingRegisteredCredits; // nullable for backward compat
+
     public StudentCategoryProgressDTO() {}
 
     public StudentCategoryProgressDTO(String categoryName,
@@ -59,4 +63,10 @@ public class StudentCategoryProgressDTO {
 
     public boolean isHonorsRequirementMet() { return honorsRequirementMet; }
     public void setHonorsRequirementMet(boolean honorsRequirementMet) { this.honorsRequirementMet = honorsRequirementMet; }
+
+    public Long getPendingRegisteredCourses() { return pendingRegisteredCourses; }
+    public void setPendingRegisteredCourses(Long pendingRegisteredCourses) { this.pendingRegisteredCourses = pendingRegisteredCourses; }
+
+    public Double getPendingRegisteredCredits() { return pendingRegisteredCredits; }
+    public void setPendingRegisteredCredits(Double pendingRegisteredCredits) { this.pendingRegisteredCredits = pendingRegisteredCredits; }
 }
