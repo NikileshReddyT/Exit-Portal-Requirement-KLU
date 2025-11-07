@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -339,6 +340,103 @@ public class AdminInsightsController {
             @RequestParam(value = "programId", required = false) Long programId,
             @RequestParam(value = "categoryName") String categoryName) {
         return ResponseEntity.ok(adminInsightsService.listCoursesByCategory(programId, categoryName));
+    }
+
+    @PostMapping("/data/courses/by-category")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<?> addCourseToCategory(
+            @RequestParam("programId") Long programId,
+            @RequestParam("categoryName") String categoryName,
+            @RequestBody Map<String, Object> payload,
+            HttpServletRequest request
+    ) {
+        return upsertCategoryCourse(programId, categoryName, payload, request, false);
+    }
+
+    @PutMapping("/data/courses/by-category")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<?> updateCourseInCategory(
+            @RequestParam("programId") Long programId,
+            @RequestParam("categoryName") String categoryName,
+            @RequestBody Map<String, Object> payload,
+            HttpServletRequest request
+    ) {
+        return upsertCategoryCourse(programId, categoryName, payload, request, true);
+    }
+
+    @DeleteMapping("/data/courses/by-category")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<?> removeCourseFromCategory(
+            @RequestParam("programId") Long programId,
+            @RequestParam("categoryName") String categoryName,
+            @RequestParam("courseCode") String courseCode,
+            HttpServletRequest request
+    ) {
+        String jwt = getJwtFromRequest(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        if (!"SUPER_ADMIN".equalsIgnoreCase(userType)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+        }
+        try {
+            boolean removed = adminInsightsService.removeCourseFromCategory(programId, categoryName, courseCode);
+            if (!removed) {
+                return ResponseEntity.status(404).body(Map.of(
+                        "error", "Mapping not found",
+                        "programId", programId,
+                        "categoryName", categoryName,
+                        "courseCode", courseCode
+                ));
+            }
+            return ResponseEntity.ok(Map.of(
+                    "message", String.format("Removed course %s from category %s", courseCode, categoryName),
+                    "programId", programId,
+                    "categoryName", categoryName,
+                    "courseCode", courseCode
+            ));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
+    }
+
+    private ResponseEntity<?> upsertCategoryCourse(Long programId,
+                                                   String categoryName,
+                                                   Map<String, Object> payload,
+                                                   HttpServletRequest request,
+                                                   boolean isUpdate) {
+        String jwt = getJwtFromRequest(request);
+        if (jwt == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+        String userType = jwtUtil.getUserTypeFromJwtToken(jwt);
+        if (!"SUPER_ADMIN".equalsIgnoreCase(userType)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden"));
+        }
+
+        String courseCode = payload == null ? null : Objects.toString(payload.get("courseCode"), null);
+        String courseTitle = payload == null ? null : Objects.toString(payload.get("courseTitle"), null);
+        Double courseCredits = payload != null && payload.containsKey("courseCredits")
+                ? convertToDouble(payload.get("courseCredits"))
+                : null;
+
+        if (!isUpdate && (courseCode == null || courseCode.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "courseCode is required"));
+        }
+
+        try {
+            Map<String, Object> result = adminInsightsService.upsertCourseForCategory(
+                    programId,
+                    categoryName,
+                    courseCode,
+                    courseTitle,
+                    courseCredits
+            );
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
     }
 
     // Students who met a given category

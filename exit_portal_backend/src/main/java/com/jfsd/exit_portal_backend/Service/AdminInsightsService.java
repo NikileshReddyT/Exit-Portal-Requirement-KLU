@@ -24,6 +24,7 @@ import com.jfsd.exit_portal_backend.dto.honors.HonorsRequirementUpdateRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
@@ -57,7 +58,7 @@ public class AdminInsightsService {
     private CoursesRepository coursesRepository;
 
     private static final double HONORS_EPSILON = 1e-6;
-    private static final int MAX_CATEGORY_STUDENT_LIST = 200;
+    private static final int MAX_CATEGORY_STUDENT_LIST = Integer.MAX_VALUE; // Return all students for comprehensive insights
 
     @Cacheable(cacheNames = "admin_api", key = "'buildDashboard:' + #userType + ':' + T(java.util.Objects).toString(#programId)")
     public Map<String, Object> buildDashboard(String userType, Long programId) {
@@ -275,7 +276,7 @@ public class AdminInsightsService {
 
         LinkedHashSet<String> eligibleStudentIds = new LinkedHashSet<>();
         LinkedHashSet<String> honorsStudentIds = new LinkedHashSet<>();
-        LinkedHashSet<String> failedButMetHonorsIds = new LinkedHashSet<>();
+        LinkedHashSet<String> failureEligibleHonorsIds = new LinkedHashSet<>();
         LinkedHashSet<String> failureStudentIds = new LinkedHashSet<>();
 
         for (HonorsStudentAccumulator acc : studentAccumulators.values()) {
@@ -305,9 +306,60 @@ public class AdminInsightsService {
             if (!acc.hasFailure && meetsAllHonors) {
                 honorsStudentIds.add(acc.studentId);
             }
-            if (acc.hasFailure && meetsAllHonors) {
-                failedButMetHonorsIds.add(acc.studentId);
+            if (acc.hasFailure && meetsDifference) {
+                failureEligibleHonorsIds.add(acc.studentId);
             }
+        }
+
+        // Build detailed student analysis with gap information
+        List<Map<String, Object>> detailedStudentAnalysis = new ArrayList<>();
+        for (HonorsStudentAccumulator acc : studentAccumulators.values()) {
+            Map<String, Object> studentDetail = new LinkedHashMap<>();
+            studentDetail.put("studentId", acc.studentId);
+            studentDetail.put("studentName", acc.studentName);
+            studentDetail.put("hasFailure", acc.hasFailure);
+            
+            // Calculate gaps for each category
+            List<Map<String, Object>> categoryGaps = new ArrayList<>();
+            for (Map.Entry<String, HonorsCategoryStats> entry : categoryStats.entrySet()) {
+                HonorsCategoryStats stats = entry.getValue();
+                double completed = acc.completedCreditsByCategory.getOrDefault(entry.getKey(), 0.0);
+                Double honorsMin = stats.honorsMinCredits;
+                Double regularMin = stats.minCredits;
+                
+                if (honorsMin != null) {
+                    double honorsGap = Math.max(0, honorsMin - completed);
+                    double regularGap = regularMin != null ? Math.max(0, regularMin - completed) : 0;
+                    boolean meetsHonors = completed + HONORS_EPSILON >= honorsMin;
+                    boolean meetsRegular = regularMin != null && completed + HONORS_EPSILON >= regularMin;
+                    
+                    Map<String, Object> gap = new LinkedHashMap<>();
+                    gap.put("categoryName", stats.categoryName);
+                    gap.put("completed", completed);
+                    gap.put("honorsMin", honorsMin);
+                    gap.put("regularMin", regularMin);
+                    gap.put("honorsGap", honorsGap);
+                    gap.put("regularGap", regularGap);
+                    gap.put("meetsHonors", meetsHonors);
+                    gap.put("meetsRegular", meetsRegular);
+                    gap.put("differs", stats.differsFromRegular);
+                    categoryGaps.add(gap);
+                }
+            }
+            studentDetail.put("categoryGaps", categoryGaps);
+            
+            // Determine student cohort
+            String cohort = "Not Eligible";
+            if (honorsStudentIds.contains(acc.studentId)) {
+                cohort = "Honors Achieved";
+            } else if (failureEligibleHonorsIds.contains(acc.studentId)) {
+                cohort = "Honors Eligible + Failure";
+            } else if (eligibleStudentIds.contains(acc.studentId)) {
+                cohort = "Eligible";
+            }
+            studentDetail.put("cohort", cohort);
+            
+            detailedStudentAnalysis.add(studentDetail);
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -320,14 +372,18 @@ public class AdminInsightsService {
         response.put("differenceCategories", differenceCategoryDisplay);
         response.put("eligibleCount", eligibleStudentIds.size());
         response.put("honorsAchieversCount", honorsStudentIds.size());
-        response.put("failedButMetHonorsCount", failedButMetHonorsIds.size());
+        response.put("failureEligibleHonorsCount", failureEligibleHonorsIds.size());
+        response.put("failedButMetHonorsCount", failureEligibleHonorsIds.size());
         response.put("studentsWithFailures", failureStudentIds.size());
         response.put("eligibleStudents", summarizeStudents(eligibleStudentIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
         response.put("honorsStudents", summarizeStudents(honorsStudentIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
-        response.put("failedButMetHonors", summarizeStudents(failedButMetHonorsIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
+        response.put("failureEligibleHonors", summarizeStudents(failureEligibleHonorsIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
+        response.put("failedButMetHonors", summarizeStudents(failureEligibleHonorsIds, studentAccumulators, MAX_CATEGORY_STUDENT_LIST));
         response.put("categories", categoryStats.values().stream()
                 .map(stats -> stats.toMap(studentAccumulators, MAX_CATEGORY_STUDENT_LIST))
                 .collect(Collectors.toList()));
+        // Add comprehensive detailed analysis
+        response.put("detailedStudentAnalysis", detailedStudentAnalysis);
 
         return response;
     }
@@ -358,6 +414,10 @@ public class AdminInsightsService {
             item.put("studentId", studentId);
             item.put("studentName", acc != null ? acc.studentName : null);
             item.put("hasFailure", acc != null && acc.hasFailure);
+            // Include detailed category progress for comprehensive insights
+            if (acc != null && !acc.completedCreditsByCategory.isEmpty()) {
+                item.put("categoryProgress", new LinkedHashMap<>(acc.completedCreditsByCategory));
+            }
             list.add(item);
             count++;
             if (count >= limit) break;
@@ -619,6 +679,81 @@ public class AdminInsightsService {
                 .distinct()
                 .map(this::toCourseMap)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    @CacheEvict(cacheNames = "admin_api", allEntries = true)
+    public Map<String, Object> upsertCourseForCategory(Long programId, String categoryName, String courseCode, String courseTitle, Double courseCredits) {
+        if (programId == null) throw new IllegalArgumentException("programId is required");
+        if (categoryName == null || categoryName.isBlank()) throw new IllegalArgumentException("categoryName is required");
+        if (courseCode == null || courseCode.isBlank()) throw new IllegalArgumentException("courseCode is required");
+        if (courseTitle == null || courseTitle.isBlank()) throw new IllegalArgumentException("courseTitle is required");
+        double credits = courseCredits != null ? courseCredits : 0.0;
+
+        Program program = programRepository.findById(programId)
+                .orElseThrow(() -> new IllegalArgumentException("Program not found for id " + programId));
+
+        Categories category = categoriesRepository.findByProgramAndCategoryName(program, categoryName)
+                .orElseGet(() -> {
+                    Categories created = new Categories();
+                    created.setCategoryName(categoryName);
+                    created.setProgram(program);
+                    return categoriesRepository.save(created);
+                });
+
+        Courses course = coursesRepository.findFirstByCourseCode(courseCode)
+                .orElseGet(() -> {
+                    Courses c = new Courses();
+                    c.setCourseCode(courseCode);
+                    return c;
+                });
+        course.setCourseTitle(courseTitle);
+        course.setCourseCredits(credits);
+        Courses savedCourse = coursesRepository.save(course);
+
+        Optional<ProgramCourseCategory> existingMappingOpt = programCourseCategoryRepository.findByProgramAndCourse(program, savedCourse);
+        boolean existed = existingMappingOpt
+                .map(existing -> existing.getCategory() != null && existing.getCategory().getCategoryID() == category.getCategoryID())
+                .orElse(false);
+
+        ProgramCourseCategory mapping = existingMappingOpt
+                .orElseGet(() -> new ProgramCourseCategory(program, savedCourse, category));
+        mapping.setCategory(category);
+        programCourseCategoryRepository.save(mapping);
+
+        Map<String, Object> response = new LinkedHashMap<>(toCourseMap(savedCourse));
+        response.put("categoryName", category.getCategoryName());
+        response.put("programId", program.getProgramId());
+        response.put("message", existed
+                ? String.format("Updated course %s in category %s", courseCode, categoryName)
+                : String.format("Added course %s to category %s", courseCode, categoryName));
+        return response;
+    }
+
+    @Transactional
+    @CacheEvict(cacheNames = "admin_api", allEntries = true)
+    public boolean removeCourseFromCategory(Long programId, String categoryName, String courseCode) {
+        if (programId == null) throw new IllegalArgumentException("programId is required");
+        if (categoryName == null || categoryName.isBlank()) throw new IllegalArgumentException("categoryName is required");
+        if (courseCode == null || courseCode.isBlank()) throw new IllegalArgumentException("courseCode is required");
+
+        Program program = programRepository.findById(programId)
+                .orElseThrow(() -> new IllegalArgumentException("Program not found for id " + programId));
+        Categories category = categoriesRepository.findByProgramAndCategoryName(program, categoryName)
+                .orElseThrow(() -> new IllegalArgumentException("Category not found: " + categoryName));
+        Courses course = coursesRepository.findFirstByCourseCode(courseCode)
+                .orElseThrow(() -> new IllegalArgumentException("Course not found: " + courseCode));
+
+        Optional<ProgramCourseCategory> mappingOpt = programCourseCategoryRepository.findByProgramAndCourse(program, course);
+        if (mappingOpt.isEmpty()) {
+            return false;
+        }
+        ProgramCourseCategory mapping = mappingOpt.get();
+        if (mapping.getCategory() == null || mapping.getCategory().getCategoryID() != category.getCategoryID()) {
+            return false;
+        }
+        programCourseCategoryRepository.delete(mapping);
+        return true;
     }
 
     @Cacheable(cacheNames = "admin_api", key = "'listMappings:' + T(java.util.Objects).toString(#programId)")

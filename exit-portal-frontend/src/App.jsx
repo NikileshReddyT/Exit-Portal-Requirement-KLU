@@ -19,7 +19,7 @@ import AdminCourseDetails from './pages/admin/AdminCourseDetails';
 import AdminGrades from './pages/admin/AdminGrades';
 import AdminProgress from './pages/admin/AdminProgress';
 import AdminStudentReport from './pages/admin/AdminStudentReport';
-import AdminInsights from './pages/admin/AdminInsights';
+import AdminHonorsInsights from './pages/admin/AdminHonorsInsights';
 import AdminStudentCategoryMatrix from './pages/admin/AdminStudentCategoryMatrix';
 import AdminDataUpload from './pages/admin/AdminDataUpload';
 import AdminDangerZone from './pages/admin/AdminDangerZone';
@@ -58,7 +58,7 @@ function App() {
         <Route path='/admin' element={<AdminLayout />}>
           <Route index element={<Navigate to="/admin/overview" replace />} />
           <Route path='overview' element={<AdminOverview />} />
-          <Route path='insights' element={<AdminInsights />} />
+          <Route path='insights' element={<AdminHonorsInsights />} />
           <Route path='insights/student-category-matrix' element={<AdminStudentCategoryMatrix />} />
           <Route path='analytics' element={<AdminAnalytics />} />
           <Route path='students' element={<AdminStudents />} />
@@ -88,7 +88,7 @@ function App() {
         <Route path='/superadmin' element={<AdminLayout />}>
           <Route index element={<Navigate to="/superadmin/overview" replace />} />
           <Route path='overview' element={<AdminOverview />} />
-          <Route path='insights' element={<AdminInsights />} />
+          <Route path='insights' element={<AdminHonorsInsights />} />
           <Route path='insights/student-category-matrix' element={<AdminStudentCategoryMatrix />} />
           <Route path='analytics' element={<AdminAnalytics />} />
           <Route path='students' element={<AdminStudents />} />
