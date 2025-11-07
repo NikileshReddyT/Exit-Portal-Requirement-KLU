@@ -176,11 +176,29 @@ public class FrontendService {
 
     @Cacheable(cacheNames = "student_api", key = "'getCoursesByCategory:' + #universityId + ':' + #category")
     public List<StudentGrade> getCoursesByCategory(String universityId, String category) {
+        // Program validation: verify the category belongs to the student's program
+        try {
+            com.jfsd.exit_portal_backend.Model.Student student = studentRepository.findByStudentId(universityId).orElse(null);
+            if (student != null && student.getProgram() != null && category != null) {
+                Long programId = student.getProgram().getProgramId();
+                // Verify category exists for this program
+                List<ProgramCourseCategory> mappings = programCourseCategoryRepository.findByProgramIdAndCategoryName(programId, category);
+                if (mappings == null || mappings.isEmpty()) {
+                    // Category not in student's program - return empty
+                    logger.warn("Student {} attempted to access category '{}' not in their program (programId={})", universityId, category, programId);
+                    return new ArrayList<>();
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error validating program scope for student {} category {}: {}", universityId, category, e.getMessage());
+        }
+        // Return student's grades for this category (already filtered by student ID)
         return studentGradeRepository.findByStudentIdAndCategory(universityId, category);
     }
 
     @Cacheable(cacheNames = "student_api", key = "'getAllCoursesByCategory:' + #categoryName")
     public List<Courses> getAllCoursesByCategory(String categoryName) {
+        // Backward-compatible unscoped lookup
         List<ProgramCourseCategory> mappings = programCourseCategoryRepository.findByCategoryName(categoryName);
         if (mappings == null || mappings.isEmpty()) {
             return new ArrayList<>();
@@ -190,6 +208,40 @@ public class FrontendService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    @Cacheable(cacheNames = "student_api", key = "'getAllCoursesByCategoryScoped:' + #categoryName + ':' + (#programId != null ? #programId : #studentId)")
+    public List<Courses> getAllCoursesByCategoryScoped(String categoryName, String studentId, Long programId) {
+        Long effectiveProgramId = programId;
+        try {
+            if (effectiveProgramId == null && studentId != null && !studentId.isBlank()) {
+                com.jfsd.exit_portal_backend.Model.Student student = studentRepository.findByStudentId(studentId)
+                        .orElse(null);
+                if (student != null && student.getProgram() != null) {
+                    effectiveProgramId = student.getProgram().getProgramId();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (effectiveProgramId != null) {
+            // Use program-scoped mappings, filter by categoryName
+            List<ProgramCourseCategory> allMappings = programCourseCategoryRepository
+                    .findByProgramIdWithCourseAndCategory(effectiveProgramId);
+            if (allMappings == null || allMappings.isEmpty()) return new ArrayList<>();
+            final String norm = categoryName == null ? "" : categoryName.trim().toLowerCase();
+            return allMappings.stream()
+                    .filter(m -> m.getCategory() != null && m.getCategory().getCategoryName() != null &&
+                            m.getCategory().getCategoryName().trim().toLowerCase().equals(norm))
+                    .map(ProgramCourseCategory::getCourse)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.collectingAndThen(
+                            Collectors.toMap(c -> c.getCourseID(), Function.identity(), (a,b) -> a),
+                            map -> new ArrayList<>(map.values())
+                    ));
+        }
+
+        // Fallback to legacy unscoped behavior
+        return getAllCoursesByCategory(categoryName);
     }
 
     @Cacheable(cacheNames = "student_api", key = "'generateStudentReport:' + #universityId")

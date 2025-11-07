@@ -279,18 +279,18 @@ const AdminStudentReport = () => {
                       <div className="text-xs text-gray-500 mb-1">CGPA</div>
                       <div className="text-lg font-bold text-gray-900">
                         {(() => {
-                          // CGPA Calculation:
-                          // Numerator: sum(gradePoint * credits) for courses with promotion === 'P'
-                          // Denominator: sum(credits) for ALL non-'R' attempts (completed/failed/etc.)
+                          // CGPA Calculation per KLU policy:
+                          // Include ALL attempted (non-registered) courses in numerator and denominator.
+                          // Numerator: sum((gradePoint || 0) * credits) for promotion !== 'R'
+                          // Denominator: sum(credits) for promotion !== 'R'
                           // Java-style rounding at 2 decimals.
                           const allCourses = (data.categories || []).flatMap(cat => (cat.courses || []));
-                          const passed = allCourses.filter(c => String(c.promotion || '').toUpperCase() === 'P' && c.gradePoint != null && c.credits != null);
-                          const attemptedNonR = allCourses.filter(c => String(c.promotion || '').toUpperCase() !== 'R' && c.credits != null);
+                          const attempts = allCourses.filter(c => String(c.promotion || '').toUpperCase() !== 'R' && c.credits != null);
 
-                          if (attemptedNonR.length === 0) return '—';
+                          if (attempts.length === 0) return '—';
 
-                          const totalWeightedPoints = passed.reduce((sum, c) => sum + (Number(c.gradePoint) * Number(c.credits)), 0);
-                          const denomCredits = attemptedNonR.reduce((sum, c) => sum + Number(c.credits), 0);
+                          const totalWeightedPoints = attempts.reduce((sum, c) => sum + ((Number(c.gradePoint ?? 0)) * Number(c.credits)), 0);
+                          const denomCredits = attempts.reduce((sum, c) => sum + Number(c.credits), 0);
 
                           if (denomCredits === 0) return '0.00 / 10.0';
 

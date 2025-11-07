@@ -3,10 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import config from '../../config';
 import { useAuth } from '../../context/AuthContext';
+import { useProgramContext } from '../../context/ProgramContext';
 import DataTable from '../../components/admin/DataTable';
 
 const AdminCategoryDetails = () => {
   const { user } = useAuth();
+  const { selectedProgramId } = useProgramContext();
   const navigate = useNavigate();
   const { categoryName } = useParams();
 
@@ -27,7 +29,11 @@ const AdminCategoryDetails = () => {
         const base = `${config.backendUrl}/api/v1/admin/data/courses/by-category`;
         const params = new URLSearchParams();
         params.append('categoryName', String(categoryName));
-        if (user?.userType === 'ADMIN' && user?.programId) params.append('programId', String(user.programId));
+        if (user?.userType === 'ADMIN' && user?.programId) {
+          params.append('programId', String(user.programId));
+        } else if (user?.userType === 'SUPER_ADMIN' && selectedProgramId) {
+          params.append('programId', String(selectedProgramId));
+        }
         const res = await axios.get(`${base}?${params.toString()}`, { withCredentials: true });
         const list = Array.isArray(res.data) ? res.data : [];
         setCourses(list);

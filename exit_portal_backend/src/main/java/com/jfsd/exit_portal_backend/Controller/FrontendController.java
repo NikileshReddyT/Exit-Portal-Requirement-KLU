@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,8 +149,12 @@ public class FrontendController {
     }
 
     @GetMapping("/getallcourses/{categoryName}")
-    public ResponseEntity<List<Courses>> getAllCourses(@PathVariable("categoryName") String categoryName) {
-        List<Courses> allCourses = frontendService.getAllCoursesByCategory(categoryName);
+    public ResponseEntity<List<Courses>> getAllCourses(
+            @PathVariable("categoryName") String categoryName,
+            @RequestParam(value = "studentId", required = false) String studentId,
+            @RequestParam(value = "programId", required = false) Long programId
+    ) {
+        List<Courses> allCourses = frontendService.getAllCoursesByCategoryScoped(categoryName, studentId, programId);
         return new ResponseEntity<>(allCourses, HttpStatus.OK);
     }
 

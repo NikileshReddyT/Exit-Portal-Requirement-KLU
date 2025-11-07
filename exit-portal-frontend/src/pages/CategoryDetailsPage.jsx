@@ -90,7 +90,9 @@ const CategoryDetailsPage = () => {
             try {
                 const [completedRes, allCoursesRes] = await Promise.all([
                     axios.get(`${config.backendUrl}/api/v1/frontend/getcategorydetails/${encodedCategoryName}/${user.universityId}`),
-                    axios.get(`${config.backendUrl}/api/v1/frontend/getallcourses/${encodedCategoryName}`)
+                    axios.get(`${config.backendUrl}/api/v1/frontend/getallcourses/${encodedCategoryName}`,
+                        { params: { studentId: user.universityId } }
+                    )
                 ]);
 
                 setCompletedCourses(completedRes.data || []);
